@@ -32,13 +32,7 @@ const fmtWhen = (iso) => {
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
 
-const JARVIS_MARK =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<circle cx="12" cy="12" r="10" stroke="var(--accent)" stroke-width="1.3" opacity="0.5"/>' +
-  '<circle cx="12" cy="12" r="6" stroke="var(--accent)" stroke-width="1.3"/>' +
-  '<circle cx="12" cy="12" r="2.3" fill="var(--accent)"/>' +
-  '<path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3" stroke="var(--accent)" stroke-width="1.3" stroke-linecap="round"/>' +
-  "</svg>";
+const JARVIS_MARK = '<img src="/jarvis-mark.png" alt="J" />';
 
 /* ---------------- theme ---------------- */
 let tz = undefined;
