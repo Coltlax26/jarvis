@@ -17,8 +17,19 @@ export type JarvisUser = {
   name: string;
   password: string;
   telegramId: string | null;
+  /** Personal mobile number in E.164 (+15551234567), for SMS routing. */
+  phone: string | null;
   persona: string;
   theme: UserTheme;
+};
+
+const normPhone = (v: unknown): string | null => {
+  if (v == null) return null;
+  const digits = String(v).replace(/[^\d+]/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("+")) return digits;
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
 };
 
 function parseTheme(rec: Record<string, unknown>): UserTheme {
@@ -43,6 +54,11 @@ export type Config = {
   users: JarvisUser[];
   sessionSecret: string;
   telegramBotToken: string | null;
+  twilio: {
+    accountSid: string;
+    authToken: string;
+    fromNumber: string;
+  } | null;
   tz: string;
   workspaceDir: string;
   publicUrl: string;
@@ -82,6 +98,7 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
             : rec.telegramId != null
               ? String(rec.telegramId)
               : null,
+        phone: normPhone(rec.phone),
         persona: typeof rec.persona === "string" ? rec.persona.trim() : "",
         theme: parseTheme(rec),
       };
@@ -104,6 +121,7 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
       name,
       password,
       telegramId: env.OWNER_TELEGRAM_ID?.trim() || null,
+      phone: normPhone(env.OWNER_PHONE),
       persona: env.WEB_USER_PERSONA?.trim() || "",
       theme: {
         mode: "hud",
@@ -160,6 +178,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     users[0].telegramId = owner;
   }
 
+  const twilioSid = env.TWILIO_ACCOUNT_SID?.trim();
+  const twilioToken = env.TWILIO_AUTH_TOKEN?.trim();
+  const twilioFrom = normPhone(env.TWILIO_FROM_NUMBER);
+  const twilio =
+    twilioSid && twilioToken && twilioFrom
+      ? { accountSid: twilioSid, authToken: twilioToken, fromNumber: twilioFrom }
+      : null;
+
   const nodeEnvRaw = env.NODE_ENV ?? "development";
   const nodeEnv =
     nodeEnvRaw === "production" || nodeEnvRaw === "test"
@@ -173,6 +199,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     users,
     sessionSecret,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
+    twilio,
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",
     publicUrl: env.PUBLIC_URL?.trim() || "http://localhost:3000",

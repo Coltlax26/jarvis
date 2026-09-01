@@ -37,6 +37,8 @@ src/
     events.ts                   JarvisBus — in-process pub/sub of turn progress
   surfaces/                    Surface interface + registry (route replies by channel)
     telegram/                   Telegram surface
+    twilio/                     SMS surface — TwilioClient (send + webhook sig
+                                verify), inbound via POST /twilio/sms on the web app
     web/                        the web console — login, chat, Tasks/Memory/Activity
                                 tabs, /api/overview snapshot, /api/stream (SSE)
   scheduler/                    60s loop that delivers due reminders

@@ -43,11 +43,11 @@ beforeEach(async () => {
   app = createApp({
     users: [
       {
-        id: "colt", name: "Colt", password: "hunter2", telegramId: null, persona: "",
+        id: "colt", name: "Colt", password: "hunter2", telegramId: null, phone: null, persona: "",
         theme: { mode: "hud", accent: null, background: null, backgroundFit: "watermark", brand: null, logo: null },
       },
       {
-        id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "",
+        id: "rich", name: "Rich", password: "richpw", telegramId: null, phone: null, persona: "",
         theme: { mode: "light", accent: "#1a5aa0", background: null, backgroundFit: "watermark", brand: "Peterson Sales", logo: null },
       },
     ],
@@ -61,7 +61,19 @@ beforeEach(async () => {
     bus,
     db,
     publicUrl: "http://localhost",
+    sms: {
+      webhookUrl: "http://localhost/twilio/sms",
+      verify: (sig) => sig === "good-sig",
+      userForPhone: (from) => (from === "+15551234567" ? "colt" : undefined),
+      handleInbound: async (from, body) => {
+        smsInbound.push(`${from}:${body}`);
+      },
+    },
   });
+});
+const smsInbound: string[] = [];
+beforeEach(() => {
+  smsInbound.length = 0;
 });
 afterEach(async () => {
   await db.close();
@@ -72,13 +84,16 @@ type CallResult = { status: number; body: Record<string, unknown>; cookie?: stri
 function call(
   method: string,
   path: string,
-  opts: { cookie?: string; body?: unknown } = {}
+  opts: { cookie?: string; body?: unknown; form?: string; headers?: Record<string, string> } = {}
 ): Promise<CallResult> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const addr = server.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
-      const data = opts.body ? JSON.stringify(opts.body) : undefined;
+      const data = opts.form ?? (opts.body ? JSON.stringify(opts.body) : undefined);
+      const contentType = opts.form
+        ? "application/x-www-form-urlencoded"
+        : "application/json";
       const req = httpRequest(
         {
           host: "127.0.0.1",
@@ -86,9 +101,10 @@ function call(
           path,
           method,
           headers: {
-            "content-type": "application/json",
+            "content-type": contentType,
             ...(data ? { "content-length": Buffer.byteLength(data) } : {}),
             ...(opts.cookie ? { cookie: opts.cookie } : {}),
+            ...(opts.headers ?? {}),
           },
         },
         (res) => {
@@ -153,6 +169,21 @@ describe("WebSurface", () => {
     expect(Array.isArray(res.body.activity)).toBe(true);
     // the message turn should have produced activity rows
     expect((res.body.activity as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("accepts a signed Twilio SMS webhook and routes it", async () => {
+    const res = await call("POST", "/twilio/sms", {
+      form: "From=%2B15551234567&Body=hey",
+      headers: { "X-Twilio-Signature": "good-sig" },
+    });
+    expect(res.status).toBe(200);
+    expect(smsInbound).toEqual(["+15551234567:hey"]);
+  });
+
+  it("rejects an unsigned Twilio webhook", async () => {
+    const res = await call("POST", "/twilio/sms", { form: "From=%2B15551234567&Body=hey" });
+    expect(res.status).toBe(403);
+    expect(smsInbound).toEqual([]);
   });
 
   it("greets the user by name on login", async () => {

@@ -16,6 +16,13 @@ import type { Surface } from "../types.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
 
+export type SmsHook = {
+  webhookUrl: string;
+  verify(signature: string | undefined, url: string, params: Record<string, string>): boolean;
+  userForPhone(from: string): string | undefined;
+  handleInbound(from: string, body: string): Promise<void>;
+};
+
 type Deps = {
   users: JarvisUser[];
   sessionSecret: string;
@@ -28,6 +35,7 @@ type Deps = {
   activity: ActivityRepo;
   bus: JarvisBus;
   db: Db;
+  sms?: SmsHook;
 };
 
 type SessionShape = { userId?: string };
@@ -204,6 +212,30 @@ export function createApp(deps: Deps): Express {
       unsubscribe();
     });
   });
+
+  // Twilio inbound SMS webhook (form-encoded, no session).
+  if (deps.sms) {
+    const sms = deps.sms;
+    app.post(
+      "/twilio/sms",
+      express.urlencoded({ extended: false }),
+      (req, res) => {
+        const params = (req.body ?? {}) as Record<string, string>;
+        if (!sms.verify(req.header("X-Twilio-Signature"), sms.webhookUrl, params)) {
+          logger.warn("rejected twilio webhook: bad signature");
+          return res.status(403).send("bad signature");
+        }
+        const from = String(params.From ?? "");
+        const body = String(params.Body ?? "").trim();
+        res.set("Content-Type", "text/xml").send("<Response></Response>");
+        if (from && body && sms.userForPhone(from)) {
+          void sms.handleInbound(from, body);
+        } else if (from && !sms.userForPhone(from)) {
+          logger.warn("sms from unknown number", { from });
+        }
+      }
+    );
+  }
 
   app.use(express.static(publicDir));
   app.get("/", (_req, res) => res.sendFile(join(publicDir, "index.html")));

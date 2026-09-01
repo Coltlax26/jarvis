@@ -14,6 +14,7 @@ import { SdkRunner } from "./core/sdkRunner.js";
 import { SurfaceRegistry } from "./surfaces/registry.js";
 import { WebSurface } from "./surfaces/web/index.js";
 import { TelegramSurface } from "./surfaces/telegram/index.js";
+import { TwilioSurface } from "./surfaces/twilio/index.js";
 import { Scheduler } from "./scheduler/index.js";
 
 async function main() {
@@ -49,6 +50,23 @@ async function main() {
   const brain = new Brain({ memory, gate, registry, runner, config, bus, activity });
 
   const surfaces = new SurfaceRegistry();
+
+  const smsUsers = config.users.filter((u) => u.phone);
+  let twilio: TwilioSurface | undefined;
+  if (config.twilio && smsUsers.length) {
+    twilio = new TwilioSurface({
+      ...config.twilio,
+      users: smsUsers.map((u) => ({ phone: u.phone!, userId: u.id })),
+      brain,
+      gate,
+    });
+    surfaces.add(twilio);
+  } else {
+    logger.warn(
+      "SMS disabled — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER and give a user a phone"
+    );
+  }
+
   surfaces.add(
     new WebSurface({
       port: config.port,
@@ -63,6 +81,14 @@ async function main() {
       activity,
       bus,
       db,
+      sms: twilio
+        ? {
+            webhookUrl: `${config.publicUrl.replace(/\/$/, "")}/twilio/sms`,
+            verify: (sig, url, params) => twilio!.verify(sig, url, params),
+            userForPhone: (from) => twilio!.userForPhone(from),
+            handleInbound: (from, body) => twilio!.handleInbound(from, body),
+          }
+        : undefined,
     })
   );
 

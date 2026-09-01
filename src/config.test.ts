@@ -65,6 +65,27 @@ describe("loadConfig", () => {
     }
   });
 
+  it("parses user phone numbers to E.164 and reads Twilio config", () => {
+    const c = loadConfig({
+      ...base,
+      JARVIS_USERS: JSON.stringify([{ name: "Colt", password: "a", phone: "(555) 123-4567" }]),
+      TWILIO_ACCOUNT_SID: "AC1",
+      TWILIO_AUTH_TOKEN: "tok",
+      TWILIO_FROM_NUMBER: "555-000-1111",
+    } as NodeJS.ProcessEnv);
+    expect(c.users[0]!.phone).toBe("+15551234567");
+    expect(c.twilio).toEqual({ accountSid: "AC1", authToken: "tok", fromNumber: "+15550001111" });
+  });
+
+  it("leaves Twilio null when creds are incomplete", () => {
+    const c = loadConfig({
+      ...base,
+      WEB_PASSWORD: "pw",
+      TWILIO_ACCOUNT_SID: "AC1",
+    } as NodeJS.ProcessEnv);
+    expect(c.twilio).toBeNull();
+  });
+
   it("passes DATABASE_URL through when set", () => {
     const c = loadConfig({
       ...base,
