@@ -4,10 +4,12 @@ import { logger } from "./logger.js";
 import { createDb } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { MemoryRepo } from "./memory/repo.js";
+import { ActivityRepo } from "./activity/repo.js";
 import { ActionRegistry } from "./actions/registry.js";
 import { ActionGate } from "./actions/gate.js";
 import { registerBuiltins } from "./actions/builtin/index.js";
 import { Brain } from "./core/brain.js";
+import { JarvisBus } from "./core/events.js";
 import { SdkRunner } from "./core/sdkRunner.js";
 import { SurfaceRegistry } from "./surfaces/registry.js";
 import { WebSurface } from "./surfaces/web/index.js";
@@ -30,6 +32,8 @@ async function main() {
 
   const memory = new MemoryRepo(db);
   await memory.ensureUser(USER_ID, USER_NAME);
+  const activity = new ActivityRepo(db);
+  const bus = new JarvisBus();
 
   const registry = new ActionRegistry();
   registerBuiltins(registry, { memory, db });
@@ -41,7 +45,7 @@ async function main() {
     workspaceDir: config.workspaceDir,
     anthropicWorkspaceId: config.anthropicWorkspaceId,
   });
-  const brain = new Brain({ memory, gate, registry, runner, config });
+  const brain = new Brain({ memory, gate, registry, runner, config, bus, activity });
 
   const surfaces = new SurfaceRegistry();
   surfaces.add(
@@ -52,6 +56,10 @@ async function main() {
       userId: USER_ID,
       brain,
       gate,
+      memory,
+      activity,
+      bus,
+      db,
       publicUrl: config.publicUrl,
     })
   );
@@ -74,7 +82,14 @@ async function main() {
   const scheduler = new Scheduler({
     db,
     userId: USER_ID,
-    deliver: (msg) => surfaces.deliver(msg),
+    deliver: async (msg) => {
+      await surfaces.deliver(msg);
+      await activity.log({
+        userId: msg.userId,
+        kind: "reminder_sent",
+        summary: msg.text,
+      });
+    },
   });
   scheduler.start();
 

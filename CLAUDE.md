@@ -30,11 +30,15 @@ src/
   memory/                      conversations, messages, long-term memory (keyword search)
   actions/                     the action gate: Action, Tier, ActionGate, ActionRegistry
     builtin/                   remember, set_reminder, and two Phase-1 demo actions
+  activity/                    ActivityRepo — a running log of what Jarvis does
   core/                        the brain: prompt building + turn orchestration
     sdkRunner.ts                real model calls via the Agent SDK
     fakeRunner.ts               scripted model for tests — no network, no API key
+    events.ts                   JarvisBus — in-process pub/sub of turn progress
   surfaces/                    Surface interface + registry (route replies by channel)
-    telegram/, web/             the two Phase 1 surfaces
+    telegram/                   Telegram surface
+    web/                        the web console — login, chat, Tasks/Memory/Activity
+                                tabs, /api/overview snapshot, /api/stream (SSE)
   scheduler/                    60s loop that delivers due reminders
   server.ts                    wires everything and boots
 migrations/                    numbered .sql files, applied in order at boot

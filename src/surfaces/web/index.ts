@@ -6,6 +6,10 @@ import session from "express-session";
 import { logger } from "../../logger.js";
 import type { Brain } from "../../core/brain.js";
 import type { ActionGate } from "../../actions/gate.js";
+import type { MemoryRepo } from "../../memory/repo.js";
+import type { ActivityRepo } from "../../activity/repo.js";
+import type { JarvisBus } from "../../core/events.js";
+import type { Db } from "../../db/index.js";
 import type { Surface } from "../types.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
@@ -14,9 +18,13 @@ type Deps = {
   password: string;
   sessionSecret: string;
   userId: string;
+  publicUrl: string;
   brain: Brain;
   gate: ActionGate;
-  publicUrl: string;
+  memory: MemoryRepo;
+  activity: ActivityRepo;
+  bus: JarvisBus;
+  db: Db;
 };
 
 export function createApp(deps: Deps): Express {
@@ -43,14 +51,18 @@ export function createApp(deps: Deps): Express {
   app.post("/login", (req, res) => {
     if (req.body?.password === deps.password) {
       (req.session as { authed?: boolean }).authed = true;
-      res.json({ ok: true });
+      res.json({ ok: true, message: "Connected" });
     } else {
-      res.status(401).json({ error: "wrong password" });
+      res.status(401).json({ error: "Wrong password" });
     }
   });
 
   app.post("/logout", (req, res) => {
     req.session.destroy(() => res.json({ ok: true }));
+  });
+
+  app.get("/api/session", (req, res) => {
+    res.json({ authed: Boolean((req.session as { authed?: boolean }).authed) });
   });
 
   app.post("/api/message", requireAuth, async (req, res) => {
@@ -65,12 +77,42 @@ export function createApp(deps: Deps): Express {
     }
   });
 
+  app.get("/api/overview", requireAuth, async (_req, res) => {
+    try {
+      const conversationId = await deps.memory.getOrCreateConversation(deps.userId);
+      const [pending, reminders, memories, activity, messages] = await Promise.all([
+        deps.gate.listPending(deps.userId),
+        listReminders(deps.db, deps.userId),
+        deps.memory.listMemories(deps.userId, 100),
+        deps.activity.recent(deps.userId, 60),
+        deps.memory.recentMessages(conversationId, 60),
+      ]);
+      res.json({
+        status: pending.length ? "waiting_on_you" : "idle",
+        pending,
+        reminders,
+        memories,
+        activity,
+        messages,
+        model: "claude-opus-5",
+      });
+    } catch (err) {
+      logger.error("overview failed", err);
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   app.get("/api/pending", requireAuth, async (_req, res) => {
     res.json({ pending: await deps.gate.listPending(deps.userId) });
   });
   app.post("/api/pending/:id/approve", requireAuth, async (req, res) => {
     try {
       const r = await deps.gate.approve(String(req.params.id), deps.userId);
+      await deps.activity.log({
+        userId: deps.userId,
+        kind: "action_approved",
+        summary: `Approved ${String(req.params.id).slice(0, 8)} — ${r.message}`,
+      });
       res.json(r);
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
@@ -79,10 +121,37 @@ export function createApp(deps: Deps): Express {
   app.post("/api/pending/:id/reject", requireAuth, async (req, res) => {
     try {
       await deps.gate.reject(String(req.params.id), deps.userId);
+      await deps.activity.log({
+        userId: deps.userId,
+        kind: "action_rejected",
+        summary: `Rejected ${String(req.params.id).slice(0, 8)}`,
+      });
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }
+  });
+
+  // Server-sent events: live turn progress.
+  app.get("/api/stream", requireAuth, (req, res) => {
+    res.set({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+    res.write(`event: hello\ndata: {"ok":true}\n\n`);
+
+    const unsubscribe = deps.bus.subscribe(deps.userId, (event) => {
+      res.write(`event: activity\ndata: ${JSON.stringify(event)}\n\n`);
+    });
+    const ping = setInterval(() => res.write(`event: ping\ndata: {}\n\n`), 25_000);
+
+    req.on("close", () => {
+      clearInterval(ping);
+      unsubscribe();
+    });
   });
 
   app.get("/api/inbox", requireAuth, (_req, res) => {
@@ -93,9 +162,24 @@ export function createApp(deps: Deps): Express {
   app.use(express.static(publicDir));
   app.get("/", (_req, res) => res.sendFile(join(publicDir, "index.html")));
 
-  // expose the inbox to the Surface wrapper
   (app as unknown as { _inbox: string[] })._inbox = inbox;
   return app;
+}
+
+async function listReminders(db: Db, userId: string) {
+  const { rows } = await db.query<Record<string, unknown>>(
+    `select id, deliver_at, body, source, status from scheduled_messages
+     where user_id = $1 and status = 'pending'
+     order by deliver_at asc limit 50`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    id: r.id as string,
+    deliverAt: new Date(r.deliver_at as string).toISOString(),
+    body: r.body as string,
+    source: r.source as string,
+    status: r.status as string,
+  }));
 }
 
 export class WebSurface implements Surface {
@@ -123,5 +207,11 @@ export class WebSurface implements Surface {
   }
   async send(_userId: string, text: string): Promise<void> {
     (this.app as unknown as { _inbox: string[] })._inbox.push(text);
+    this.opts.bus.publish(this.opts.userId, {
+      kind: "turn_end",
+      text,
+      at: new Date().toISOString(),
+      surface: "scheduler",
+    });
   }
 }

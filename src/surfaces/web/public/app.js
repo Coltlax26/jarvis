@@ -1,53 +1,271 @@
-const log = document.getElementById("log");
-const loginForm = document.getElementById("login");
-const chatForm = document.getElementById("chat");
+"use strict";
 
-function add(text, who) {
-  const el = document.createElement("div");
-  el.className = "msg " + (who === "me" ? "me" : "jarvis");
-  el.textContent = text;
-  log.appendChild(el);
-  log.scrollTop = log.scrollHeight;
-}
-
-async function post(url, body) {
+const $ = (id) => document.getElementById(id);
+const api = async (url, opts = {}) => {
   const r = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    method: opts.body ? "POST" : "GET",
+    headers: opts.body ? { "content-type": "application/json" } : undefined,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  return { status: r.status, data: await r.json().catch(() => ({})) };
-}
+  let data = {};
+  try { data = await r.json(); } catch { /* non-json */ }
+  return { status: r.status, ok: r.ok, data };
+};
+const fmtTime = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+const fmtWhen = (iso) => {
+  const d = new Date(iso), now = Date.now(), diff = d.getTime() - now;
+  const abs = Math.abs(diff), mins = Math.round(abs / 60000);
+  if (mins < 1) return diff < 0 ? "just now" : "any moment";
+  if (mins < 60) return diff < 0 ? `${mins}m ago` : `in ${mins}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return diff < 0 ? `${hrs}h ago` : `in ${hrs}h`;
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+};
+
+/* ---------------- login ---------------- */
+const loginScreen = $("login-screen");
+const loginForm = $("login-form");
+const loginMsg = $("login-msg");
 
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const pw = document.getElementById("pw").value;
-  const { status } = await post("/login", { password: pw });
+  loginMsg.className = "login-msg";
+  loginMsg.textContent = "Checking…";
+  const { status, data } = await api("/login", { body: { password: $("pw").value } });
   if (status === 200) {
-    loginForm.hidden = true;
-    chatForm.hidden = false;
-    startPolling();
+    loginMsg.className = "login-msg ok";
+    loginMsg.textContent = "✓ " + (data.message || "Connected");
+    setTimeout(enterApp, 550);
   } else {
-    add("Wrong password.", "jarvis");
+    loginMsg.className = "login-msg err";
+    loginMsg.textContent = data.error || "Wrong password";
+    $("pw").select();
   }
 });
 
-chatForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const input = document.getElementById("text");
-  const text = input.value.trim();
-  if (!text) return;
-  add(text, "me");
-  input.value = "";
-  const { status, data } = await post("/api/message", { text });
-  add(status === 200 ? data.reply : "Error: " + (data.error || status), "jarvis");
+async function boot() {
+  const { data } = await api("/api/session");
+  if (data && data.authed) enterApp();
+}
+
+function enterApp() {
+  loginScreen.classList.add("gone");
+  $("app").hidden = false;
+  startClock();
+  connectStream();
+  refreshOverview();
+  setInterval(refreshOverview, 8000);
+  setTimeout(() => loginScreen.remove(), 500);
+}
+
+/* ---------------- tabs ---------------- */
+$("tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
+  const view = btn.dataset.view;
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
 });
 
-function startPolling() {
-  setInterval(async () => {
-    const r = await fetch("/api/inbox");
-    if (!r.ok) return;
-    const { items } = await r.json();
-    for (const it of items) add(it, "jarvis");
-  }, 3000);
+/* ---------------- clock ---------------- */
+const started = Date.now();
+function startClock() {
+  const tick = () => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    $("clock").textContent = (h ? h + ":" : "") + String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+  };
+  tick();
+  setInterval(tick, 1000);
 }
+
+/* ---------------- chat ---------------- */
+const log = $("log");
+let thinkingEl = null;
+
+function bubble(text, who) {
+  const el = document.createElement("div");
+  el.className = "msg " + who;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+function showThinking(label) {
+  clearThinking();
+  thinkingEl = document.createElement("div");
+  thinkingEl.className = "thinking";
+  thinkingEl.innerHTML = '<span class="spin"></span><span></span>';
+  thinkingEl.lastChild.textContent = label || "Thinking…";
+  log.appendChild(thinkingEl);
+  log.scrollTop = log.scrollHeight;
+}
+function clearThinking() {
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+}
+
+const composer = $("composer");
+const textEl = $("text");
+textEl.addEventListener("input", () => {
+  textEl.style.height = "auto";
+  textEl.style.height = Math.min(textEl.scrollHeight, 150) + "px";
+});
+textEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); composer.requestSubmit(); }
+});
+composer.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = textEl.value.trim();
+  if (!text) return;
+  bubble(text, "me");
+  textEl.value = "";
+  textEl.style.height = "auto";
+  $("send").disabled = true;
+  showThinking("Thinking…");
+  const { status, data } = await api("/api/message", { body: { text } });
+  clearThinking();
+  if (status === 200) bubble(data.reply, "jarvis");
+  else bubble("Error: " + (data.error || status), "err");
+  $("send").disabled = false;
+  refreshOverview();
+});
+
+/* ---------------- live stream (SSE) ---------------- */
+function setLink(live) {
+  $("link-dot").classList.toggle("live", live);
+  $("link-text").textContent = live ? "live" : "reconnecting";
+}
+function setState(s) {
+  const pill = $("state-pill");
+  pill.className = "pill" + (s === "working" ? " working" : s === "waiting_on_you" ? " waiting" : "");
+  pill.textContent = s === "working" ? "working" : s === "waiting_on_you" ? "waiting on you" : "idle";
+}
+
+function connectStream() {
+  const es = new EventSource("/api/stream");
+  es.addEventListener("hello", () => setLink(true));
+  es.addEventListener("ping", () => setLink(true));
+  es.addEventListener("activity", (ev) => {
+    const e = JSON.parse(ev.data);
+    pushEvent(e);
+    if (e.kind === "turn_start" || e.kind === "thinking" || e.kind === "tool_run") setState("working");
+    if (e.kind === "thinking") showThinking(e.text);
+    if (e.kind === "tool_run") showThinking(e.text + "…");
+    if (e.kind === "tool_held") { showThinking("Queued for your approval…"); refreshOverview(); }
+    if (e.kind === "turn_end" || e.kind === "error") { setState("idle"); clearThinking(); }
+    if (e.kind === "turn_end" && e.surface && e.surface !== "web") bubble(e.text, "jarvis");
+  });
+  es.onerror = () => { setLink(false); };
+}
+
+/* ---------------- activity feed ---------------- */
+const feed = $("feed");
+const EVT_ICON = {
+  turn_start: "💬", thinking: "…", tool_run: "⚙", tool_held: "⏸", tool_rejected: "⛔",
+  reply: "✓", turn_end: "✓", error: "⚠", message_in: "💬", action_run: "⚙",
+  action_held: "⏸", action_approved: "✅", action_rejected: "⛔", reminder_sent: "🔔",
+};
+function eventRow(e) {
+  const row = document.createElement("div");
+  row.className = "evt k-" + e.kind;
+  const when = e.at || e.createdAt;
+  row.innerHTML =
+    '<div class="ic"></div><div class="body"><div class="t"></div><div class="meta"></div></div>';
+  row.querySelector(".ic").textContent = EVT_ICON[e.kind] || "•";
+  row.querySelector(".t").textContent = e.text || e.summary || e.kind;
+  row.querySelector(".meta").textContent =
+    (e.surface ? e.surface + " · " : "") + (when ? fmtTime(when) : "");
+  return row;
+}
+function pushEvent(e) {
+  feed.prepend(eventRow(e));
+  while (feed.children.length > 120) feed.lastChild.remove();
+}
+
+/* ---------------- overview poll ---------------- */
+async function refreshOverview() {
+  const { ok, data } = await api("/api/overview");
+  if (!ok) return;
+  $("model").textContent = data.model || "—";
+  if (!thinkingEl) setState(data.status);
+
+  // pending
+  const pl = $("pending-list");
+  pl.innerHTML = "";
+  $("pending-count").textContent = data.pending.length;
+  $("badge-tasks").textContent = data.pending.length || "";
+  if (!data.pending.length) pl.innerHTML = '<div class="empty">Nothing waiting on you.</div>';
+  for (const p of data.pending) pl.appendChild(pendingCard(p));
+
+  // reminders
+  const rl = $("reminder-list");
+  rl.innerHTML = "";
+  $("reminder-count").textContent = data.reminders.length;
+  if (!data.reminders.length) rl.innerHTML = '<div class="empty">No reminders scheduled.</div>';
+  for (const r of data.reminders) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = '<div class="card-head"><span class="tier">🔔 reminder</span><span class="when"></span></div><div class="summary"></div>';
+    el.querySelector(".when").textContent = fmtWhen(r.deliverAt);
+    el.querySelector(".summary").textContent = r.body;
+    rl.appendChild(el);
+  }
+
+  // recently done (from activity)
+  const dl = $("done-list");
+  dl.innerHTML = "";
+  const done = (data.activity || []).filter((a) =>
+    ["action_run", "action_approved", "action_rejected", "reminder_sent"].includes(a.kind)
+  ).slice(0, 10);
+  if (!done.length) dl.innerHTML = '<div class="empty">Nothing yet.</div>';
+  for (const a of done) dl.appendChild(eventRow(a));
+
+  // memory
+  const ml = $("memory-list");
+  ml.innerHTML = "";
+  $("memory-count").textContent = data.memories.length;
+  if (!data.memories.length) ml.innerHTML = '<div class="empty">Jarvis has not saved anything yet.</div>';
+  for (const m of data.memories) {
+    const el = document.createElement("div");
+    el.className = "mem";
+    el.innerHTML = '<div class="c"></div><div class="when"></div>';
+    el.querySelector(".c").textContent = m.content;
+    el.querySelector(".when").textContent = fmtWhen(m.createdAt);
+    ml.appendChild(el);
+  }
+
+  // seed activity feed once
+  if (!feed.dataset.seeded && data.activity) {
+    feed.dataset.seeded = "1";
+    for (const a of [...data.activity].reverse()) pushEvent(a);
+  }
+}
+
+function pendingCard(p) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML =
+    '<div class="card-head"><span class="tier t' + p.tier + '">tier ' + p.tier + '</span>' +
+    '<span class="name" style="font-weight:600;font-size:12.5px"></span>' +
+    '<span class="when"></span></div>' +
+    '<div class="summary"></div>' +
+    '<div class="actions"><button class="approve">Approve</button><button class="reject">Reject</button></div>';
+  el.querySelector(".name").textContent = p.actionName;
+  el.querySelector(".when").textContent = fmtWhen(p.createdAt);
+  el.querySelector(".summary").textContent = p.summary || "(no summary)";
+  el.querySelector(".approve").addEventListener("click", async () => {
+    el.querySelector(".actions").innerHTML = "<span class='empty'>Approving…</span>";
+    await api("/api/pending/" + p.id + "/approve", { body: {} });
+    refreshOverview();
+  });
+  el.querySelector(".reject").addEventListener("click", async () => {
+    await api("/api/pending/" + p.id + "/reject", { body: {} });
+    refreshOverview();
+  });
+  return el;
+}
+
+boot();

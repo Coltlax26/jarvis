@@ -8,6 +8,8 @@ import { ActionGate } from "../../actions/gate.js";
 import { registerBuiltins } from "../../actions/builtin/index.js";
 import { Brain } from "../../core/brain.js";
 import { FakeRunner } from "../../core/fakeRunner.js";
+import { ActivityRepo } from "../../activity/repo.js";
+import { JarvisBus } from "../../core/events.js";
 import { createApp } from "./index.js";
 import type { Express } from "express";
 import type { Config } from "../../config.js";
@@ -22,6 +24,8 @@ beforeEach(async () => {
   const registry = new ActionRegistry();
   registerBuiltins(registry, { memory, db });
   const gate = new ActionGate(db, registry);
+  const activity = new ActivityRepo(db);
+  const bus = new JarvisBus();
   const cfg: Pick<Config, "tz" | "workspaceDir"> = {
     tz: "America/Denver",
     workspaceDir: "./workspace",
@@ -32,6 +36,8 @@ beforeEach(async () => {
     registry,
     runner: new FakeRunner([{ say: "hi from jarvis" }]),
     config: cfg,
+    bus,
+    activity,
   });
   app = createApp({
     password: "hunter2",
@@ -39,6 +45,10 @@ beforeEach(async () => {
     userId: "colt",
     brain,
     gate,
+    memory,
+    activity,
+    bus,
+    db,
     publicUrl: "http://localhost",
   });
 });
@@ -116,5 +126,26 @@ describe("WebSurface", () => {
     const res = await call("GET", "/health");
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+
+  it("blocks /api/overview without a session and returns a snapshot with one", async () => {
+    const blocked = await call("GET", "/api/overview");
+    expect(blocked.status).toBe(401);
+
+    const login = await call("POST", "/login", { body: { password: "hunter2" } });
+    await call("POST", "/api/message", { cookie: login.cookie, body: { text: "hello" } });
+    const res = await call("GET", "/api/overview", { cookie: login.cookie });
+    expect(res.status).toBe(200);
+    expect(res.body.model).toBe("claude-opus-5");
+    expect(Array.isArray(res.body.pending)).toBe(true);
+    expect(Array.isArray(res.body.memories)).toBe(true);
+    expect(Array.isArray(res.body.activity)).toBe(true);
+    // the message turn should have produced activity rows
+    expect((res.body.activity as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("reports login success message", async () => {
+    const res = await call("POST", "/login", { body: { password: "hunter2" } });
+    expect(res.body.message).toBe("Connected");
   });
 });

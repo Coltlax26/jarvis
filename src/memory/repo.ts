@@ -80,6 +80,15 @@ export class MemoryRepo {
     return rowToMemory(rows[0]!);
   }
 
+  async listMemories(userId: string, limit = 100): Promise<Memory[]> {
+    const n = Math.max(1, Math.min(500, Math.floor(limit)));
+    const { rows } = await this.db.query<Record<string, unknown>>(
+      `select * from memories where user_id = $1 order by created_at desc limit ${n}`,
+      [userId]
+    );
+    return rows.map(rowToMemory);
+  }
+
   async searchMemories(
     userId: string,
     queryText: string,

@@ -16,6 +16,7 @@ describe("migrations", () => {
     const names = rows.map((r) => r.table_name);
     expect(names).toEqual(
       expect.arrayContaining([
+        "activity",
         "conversations",
         "messages",
         "memories",
