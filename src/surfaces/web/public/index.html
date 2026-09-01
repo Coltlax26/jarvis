@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jarvis</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; background: #0d0d0f; color: #e8e8ea; }
+    #wrap { max-width: 720px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+    #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+    .msg { padding: 10px 12px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; }
+    .me { align-self: flex-end; background: #2a5bd7; }
+    .jarvis { align-self: flex-start; background: #1e1e24; }
+    form { display: flex; gap: 8px; }
+    input, button { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #16161a; color: inherit; }
+    input { flex: 1; }
+    #login { align-self: center; margin: auto; display: flex; flex-direction: column; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="log"></div>
+    <form id="login"><input type="password" id="pw" placeholder="Password" /><button>Enter</button></form>
+    <form id="chat" hidden><input id="text" placeholder="Message Jarvis" autocomplete="off" /><button>Send</button></form>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
