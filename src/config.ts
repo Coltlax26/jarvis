@@ -2,6 +2,7 @@ export class ConfigError extends Error {}
 
 export type Config = {
   anthropicApiKey: string;
+  anthropicWorkspaceId: string | null;
   databaseUrl: string | null;
   webPassword: string;
   sessionSecret: string;
@@ -43,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   return {
     anthropicApiKey,
+    anthropicWorkspaceId: env.ANTHROPIC_WORKSPACE_ID?.trim() || null,
     databaseUrl: env.DATABASE_URL?.trim() ? env.DATABASE_URL.trim() : null,
     webPassword,
     sessionSecret,

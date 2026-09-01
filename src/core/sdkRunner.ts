@@ -14,12 +14,16 @@ export class SdkRunner implements ModelRunner {
       model: string;
       apiKey: string;
       workspaceDir: string;
+      anthropicWorkspaceId?: string | null;
       timeoutMs?: number;
     }
   ) {}
 
   async run(req: RunRequest): Promise<RunResult> {
     process.env.ANTHROPIC_API_KEY = this.opts.apiKey;
+    if (this.opts.anthropicWorkspaceId) {
+      process.env.ANTHROPIC_WORKSPACE_ID = this.opts.anthropicWorkspaceId;
+    }
 
     const jarvisTools = req.toolActions.map((action) => {
       const shape: AnyZodRawShape =

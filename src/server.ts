@@ -39,6 +39,7 @@ async function main() {
     model: "claude-opus-5",
     apiKey: config.anthropicApiKey,
     workspaceDir: config.workspaceDir,
+    anthropicWorkspaceId: config.anthropicWorkspaceId,
   });
   const brain = new Brain({ memory, gate, registry, runner, config });
 
