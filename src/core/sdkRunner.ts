@@ -6,9 +6,16 @@ import { logger } from "../logger.js";
 
 const SAFE_BUILTIN_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
 
+const DEFAULT_TIMEOUT_MS = 120_000;
+
 export class SdkRunner implements ModelRunner {
   constructor(
-    private opts: { model: string; apiKey: string; workspaceDir: string }
+    private opts: {
+      model: string;
+      apiKey: string;
+      workspaceDir: string;
+      timeoutMs?: number;
+    }
   ) {}
 
   async run(req: RunRequest): Promise<RunResult> {
@@ -44,10 +51,7 @@ export class SdkRunner implements ModelRunner {
       tools: jarvisTools,
     });
 
-    let finalText = "";
-    let cost = 0;
-
-    for await (const message of query({
+    const stream = query({
       prompt: req.userPrompt,
       options: {
         model: this.opts.model,
@@ -60,13 +64,40 @@ export class SdkRunner implements ModelRunner {
         ],
         permissionMode: "default",
       },
-    })) {
-      if (message.type === "result") {
-        if (message.subtype === "success") finalText = message.result;
-        cost = message.total_cost_usd ?? 0;
+    });
+
+    const timeoutMs = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const consume = async (): Promise<RunResult> => {
+      let finalText = "";
+      let cost = 0;
+      for await (const message of stream) {
+        if (message.type === "result") {
+          cost = message.total_cost_usd ?? 0;
+          if (message.subtype === "success") {
+            finalText = message.result;
+          } else {
+            throw new Error(`Model run failed (${message.subtype}): ${message.errors.join("; ")}`);
+          }
+        }
       }
+      if (!finalText) logger.warn("SdkRunner produced no final text");
+      return { text: finalText, costUsd: cost };
+    };
+
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`Model run timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([consume(), timeout]);
+    } catch (err) {
+      await stream.return(undefined).catch(() => {});
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    if (!finalText) logger.warn("SdkRunner produced no final text");
-    return { text: finalText, costUsd: cost };
   }
 }
