@@ -21,8 +21,17 @@ export class SdkRunner implements ModelRunner {
 
   async run(req: RunRequest): Promise<RunResult> {
     process.env.ANTHROPIC_API_KEY = this.opts.apiKey;
+    // Identity-linked API keys must send an `anthropic-workspace-id` header on
+    // every request. The SDK reads extra headers from ANTHROPIC_CUSTOM_HEADERS
+    // (newline-separated `Name: value` pairs). ANTHROPIC_WORKSPACE_ID alone only
+    // applies to OIDC federation auth, not plain API keys.
     if (this.opts.anthropicWorkspaceId) {
-      process.env.ANTHROPIC_WORKSPACE_ID = this.opts.anthropicWorkspaceId;
+      const header = `anthropic-workspace-id: ${this.opts.anthropicWorkspaceId}`;
+      const existing = process.env.ANTHROPIC_CUSTOM_HEADERS;
+      process.env.ANTHROPIC_CUSTOM_HEADERS =
+        existing && !existing.includes("anthropic-workspace-id")
+          ? `${existing}\n${header}`
+          : header;
     }
 
     const jarvisTools = req.toolActions.map((action) => {
