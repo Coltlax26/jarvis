@@ -187,10 +187,18 @@ composer.addEventListener("submit", async (e) => {
 });
 
 /* ---------------- live stream (SSE) ---------------- */
-function setLink(live) {
-  $("link-dot").classList.toggle("live", live);
-  $("link-text").textContent = live ? "live" : "reconnecting";
+let sseOk = false;
+let pollOk = false;
+function paintLink() {
+  // "live" = SSE connected. "connected" = SSE down but polling works (still
+  // functional, just no instant updates). "offline" = nothing is reaching us.
+  const el = $("link-dot");
+  const txt = $("link-text");
+  if (sseOk) { el.classList.add("live"); txt.textContent = "live"; }
+  else if (pollOk) { el.classList.add("live"); txt.textContent = "connected"; }
+  else { el.classList.remove("live"); txt.textContent = "offline"; }
 }
+function setLink(live) { sseOk = live; paintLink(); }
 function setState(s) {
   const pill = $("state-pill");
   pill.className = "pill" + (s === "working" ? " working" : s === "waiting_on_you" ? " waiting" : "");
@@ -211,7 +219,13 @@ function connectStream() {
     if (e.kind === "turn_end" || e.kind === "error") { setState("idle"); clearThinking(); }
     if (e.kind === "turn_end" && e.surface && e.surface !== "web") bubble(e.text, "jarvis");
   });
-  es.onerror = () => { setLink(false); };
+  es.onerror = () => {
+    setLink(false);
+    // EventSource auto-retries; if it stays broken, reconnect fresh after a bit.
+    if (es.readyState === EventSource.CLOSED) {
+      setTimeout(connectStream, 5000);
+    }
+  };
 }
 
 /* ---------------- activity feed ---------------- */
@@ -241,6 +255,8 @@ function pushEvent(e) {
 /* ---------------- overview poll ---------------- */
 async function refreshOverview() {
   const { ok, data } = await api("/api/overview");
+  pollOk = ok;
+  paintLink();
   if (!ok) return;
   $("model").textContent = data.model || "—";
   if (!thinkingEl) setState(data.status);

@@ -115,6 +115,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const users = parseUsers(env);
 
+  // Convenience: OWNER_TELEGRAM_ID attaches to the first user if that user has
+  // no telegramId of their own. Lets you enable Telegram without hand-editing
+  // the JARVIS_USERS JSON.
+  const owner = env.OWNER_TELEGRAM_ID?.trim();
+  if (owner && users[0] && !users[0].telegramId) {
+    users[0].telegramId = owner;
+  }
+
   const nodeEnvRaw = env.NODE_ENV ?? "development";
   const nodeEnv =
     nodeEnvRaw === "production" || nodeEnvRaw === "test"
