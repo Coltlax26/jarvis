@@ -100,6 +100,7 @@ button { font-family: var(--sans); cursor: pointer; }
   position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
   background: rgba(6,9,14,.6); backdrop-filter: blur(2px);
 }
+.confirm-backdrop[hidden] { display: none; }
 .confirm-box {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 22px 24px; max-width: 320px; text-align: center;
