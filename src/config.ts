@@ -177,6 +177,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (owner && users[0] && !users[0].telegramId) {
     users[0].telegramId = owner;
   }
+  const ownerPhone = normPhone(env.OWNER_PHONE);
+  if (ownerPhone && users[0] && !users[0].phone) {
+    users[0].phone = ownerPhone;
+  }
 
   const twilioSid = env.TWILIO_ACCOUNT_SID?.trim();
   const twilioToken = env.TWILIO_AUTH_TOKEN?.trim();
