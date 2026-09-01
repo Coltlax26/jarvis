@@ -21,6 +21,7 @@ type Deps = {
   sessionSecret: string;
   publicUrl: string;
   databaseUrl: string | null;
+  tz: string;
   brain: Brain;
   gate: ActionGate;
   memory: MemoryRepo;
@@ -88,7 +89,7 @@ export function createApp(deps: Deps): Express {
   app.get("/api/me", (req, res) => {
     const user = byId.get(uid(req));
     if (!user) return res.status(401).json({ error: "not authenticated" });
-    res.json({ id: user.id, name: user.name });
+    res.json({ id: user.id, name: user.name, theme: user.theme, tz: deps.tz });
   });
 
   app.post("/api/message", requireAuth, async (req, res) => {
@@ -114,6 +115,11 @@ export function createApp(deps: Deps): Express {
         deps.activity.recent(userId, 60),
         deps.memory.recentMessages(conversationId, 60),
       ]);
+      const now = new Date();
+      const todayStr = now.toLocaleDateString("en-CA", { timeZone: deps.tz });
+      const remindersToday = reminders.filter(
+        (r) => new Date(r.deliverAt).toLocaleDateString("en-CA", { timeZone: deps.tz }) === todayStr
+      );
       res.json({
         status: pending.length ? "waiting_on_you" : "idle",
         pending,
@@ -122,6 +128,18 @@ export function createApp(deps: Deps): Express {
         activity,
         messages,
         model: "claude-opus-5",
+        now: now.toISOString(),
+        tz: deps.tz,
+        today: {
+          date: now.toLocaleDateString("en-US", {
+            timeZone: deps.tz,
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+          }),
+          reminders: remindersToday,
+          pendingCount: pending.length,
+        },
       });
     } catch (err) {
       logger.error("overview failed", err);

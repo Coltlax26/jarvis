@@ -56,6 +56,7 @@ async function main() {
       sessionSecret: config.sessionSecret,
       publicUrl: config.publicUrl,
       databaseUrl: config.databaseUrl,
+      tz: config.tz,
       brain,
       gate,
       memory,

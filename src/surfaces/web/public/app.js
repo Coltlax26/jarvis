@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 let inApp = false;
+
 const api = async (url, opts = {}) => {
   const r = await fetch(url, {
     method: opts.body ? "POST" : "GET",
@@ -10,18 +11,19 @@ const api = async (url, opts = {}) => {
   });
   let data = {};
   try { data = await r.json(); } catch { /* non-json */ }
-  // Session expired mid-use (e.g. server redeployed) — send back to login.
   if (r.status === 401 && inApp && url.startsWith("/api/") && url !== "/api/me") {
     location.reload();
   }
   return { status: r.status, ok: r.ok, data };
 };
+
+const two = (n) => String(n).padStart(2, "0");
 const fmtTime = (iso) => {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
 const fmtWhen = (iso) => {
-  const d = new Date(iso), now = Date.now(), diff = d.getTime() - now;
+  const d = new Date(iso), diff = d.getTime() - Date.now();
   const abs = Math.abs(diff), mins = Math.round(abs / 60000);
   if (mins < 1) return diff < 0 ? "just now" : "any moment";
   if (mins < 60) return diff < 0 ? `${mins}m ago` : `in ${mins}m`;
@@ -30,7 +32,38 @@ const fmtWhen = (iso) => {
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
 
-/* ---------------- login ---------------- */
+const JARVIS_MARK =
+  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle cx="12" cy="12" r="10" stroke="var(--accent)" stroke-width="1.3" opacity="0.5"/>' +
+  '<circle cx="12" cy="12" r="6" stroke="var(--accent)" stroke-width="1.3"/>' +
+  '<circle cx="12" cy="12" r="2.3" fill="var(--accent)"/>' +
+  '<path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3" stroke="var(--accent)" stroke-width="1.3" stroke-linecap="round"/>' +
+  "</svg>";
+
+/* ---------------- theme ---------------- */
+let tz = undefined;
+function applyTheme(theme) {
+  if (!theme) return;
+  const root = document.documentElement;
+  root.dataset.theme = theme.mode === "light" ? "light" : "hud";
+  if (theme.accent) root.style.setProperty("--accent", theme.accent);
+  if (theme.background) {
+    const bg = $("bg-image");
+    bg.style.backgroundImage = `url("${theme.background}")`;
+    bg.dataset.fit = theme.backgroundFit || "watermark";
+    bg.classList.add("show");
+  }
+  if (theme.logo) {
+    const img = document.createElement("img");
+    img.src = theme.logo;
+    img.className = "brand-logo";
+    document.querySelector(".brand").appendChild(img);
+  }
+  if (theme.brand) $("who").textContent = theme.brand;
+}
+
+/* ---------------- boot / login ---------------- */
+const boot = $("boot");
 const loginScreen = $("login-screen");
 const loginForm = $("login-form");
 const loginMsg = $("login-msg");
@@ -38,13 +71,12 @@ const loginMsg = $("login-msg");
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   loginMsg.className = "login-msg";
-  loginMsg.textContent = "Checking…";
+  loginMsg.textContent = "Authenticating…";
   const { status, data } = await api("/login", { body: { password: $("pw").value } });
   if (status === 200) {
     loginMsg.className = "login-msg ok";
-    loginMsg.textContent = "✓ " + (data.message || "Connected");
-    const name = data.user && data.user.name;
-    setTimeout(() => enterApp(name), 550);
+    loginMsg.textContent = "✓ " + (data.message || "Access granted");
+    setTimeout(() => enterApp(data.user && data.user.name, data.user && data.user.theme), 600);
   } else {
     loginMsg.className = "login-msg err";
     loginMsg.textContent = data.error || "Wrong password";
@@ -52,26 +84,39 @@ loginForm.addEventListener("submit", async (e) => {
   }
 });
 
-async function boot() {
-  const { status, data } = await api("/api/me");
-  if (status === 200 && data.name) enterApp(data.name);
+async function start() {
+  const me = await api("/api/me");
+  setTimeout(() => boot.classList.add("gone"), 900);
+  setTimeout(() => boot.remove(), 1500);
+  if (me.status === 200 && me.data.name) {
+    tz = me.data.tz;
+    enterApp(me.data.name, me.data.theme);
+  } else {
+    setTimeout(() => { loginScreen.hidden = false; }, 900);
+  }
 }
 
 let greeted = false;
-async function enterApp(name) {
+async function enterApp(name, theme) {
+  applyTheme(theme);
   loginScreen.classList.add("gone");
+  boot.classList.add("gone");
   $("app").hidden = false;
-  if (!name) {
+  inApp = true;
+
+  if (!name || !theme) {
     const me = await api("/api/me");
-    name = me.data && me.data.name;
+    name = name || (me.data && me.data.name);
+    theme = theme || (me.data && me.data.theme);
+    tz = tz || (me.data && me.data.tz);
+    applyTheme(theme);
   }
-  if (name) {
-    $("who").textContent = name;
-    if (!greeted) {
-      greeted = true;
-      bubble("Hello " + name + "! What can I do for you?", "jarvis");
-    }
+  if (name && !theme?.brand) $("who").textContent = name;
+  if (name && !greeted) {
+    greeted = true;
+    bubble(`Hello ${name}. Systems are online. What can I do for you?`, "jarvis");
   }
+
   startClock();
   connectStream();
   refreshOverview();
@@ -87,9 +132,7 @@ $("logout-yes").addEventListener("click", async () => {
   await api("/logout", { body: {} });
   location.reload();
 });
-logoutConfirm.addEventListener("click", (e) => {
-  if (e.target === logoutConfirm) logoutConfirm.hidden = true;
-});
+logoutConfirm.addEventListener("click", (e) => { if (e.target === logoutConfirm) logoutConfirm.hidden = true; });
 
 /* ---------------- tabs ---------------- */
 $("tabs").addEventListener("click", (e) => {
@@ -101,12 +144,15 @@ $("tabs").addEventListener("click", (e) => {
 });
 
 /* ---------------- clock ---------------- */
-const started = Date.now();
 function startClock() {
   const tick = () => {
-    const s = Math.floor((Date.now() - started) / 1000);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-    $("clock").textContent = (h ? h + ":" : "") + String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+    const now = new Date();
+    const opts = tz ? { timeZone: tz } : {};
+    const t = now.toLocaleTimeString("en-US", { ...opts, hour: "numeric", minute: "2-digit", hour12: true });
+    const d = now.toLocaleDateString("en-US", { ...opts, weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+    $("clock-time").textContent = t;
+    $("clock-date").textContent = d;
+    $("today-time").textContent = t;
   };
   tick();
   setInterval(tick, 1000);
@@ -115,15 +161,6 @@ function startClock() {
 /* ---------------- chat ---------------- */
 const log = $("log");
 let thinkingEl = null;
-
-// Arc-reactor style "J" mark for Jarvis messages.
-const JARVIS_MARK =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<circle cx="12" cy="12" r="10" stroke="#57e3ff" stroke-width="1.4" opacity="0.55"/>' +
-  '<circle cx="12" cy="12" r="6" stroke="#57e3ff" stroke-width="1.4"/>' +
-  '<circle cx="12" cy="12" r="2.3" fill="#57e3ff"/>' +
-  '<path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3" stroke="#57e3ff" stroke-width="1.4" stroke-linecap="round"/>' +
-  "</svg>";
 
 function bubble(text, who) {
   if (who === "jarvis") {
@@ -152,7 +189,7 @@ function showThinking(label) {
   thinkingEl = document.createElement("div");
   thinkingEl.className = "thinking";
   thinkingEl.innerHTML = '<span class="spin"></span><span></span>';
-  thinkingEl.lastChild.textContent = label || "Thinking…";
+  thinkingEl.lastChild.textContent = label || "Processing…";
   log.appendChild(thinkingEl);
   log.scrollTop = log.scrollHeight;
 }
@@ -177,7 +214,7 @@ composer.addEventListener("submit", async (e) => {
   textEl.value = "";
   textEl.style.height = "auto";
   $("send").disabled = true;
-  showThinking("Thinking…");
+  showThinking("Processing…");
   const { status, data } = await api("/api/message", { body: { text } });
   clearThinking();
   if (status === 200) bubble(data.reply, "jarvis");
@@ -186,14 +223,11 @@ composer.addEventListener("submit", async (e) => {
   refreshOverview();
 });
 
-/* ---------------- live stream (SSE) ---------------- */
+/* ---------------- live link ---------------- */
 let sseOk = false;
 let pollOk = false;
 function paintLink() {
-  // "live" = SSE connected. "connected" = SSE down but polling works (still
-  // functional, just no instant updates). "offline" = nothing is reaching us.
-  const el = $("link-dot");
-  const txt = $("link-text");
+  const el = $("link-dot"), txt = $("link-text");
   if (sseOk) { el.classList.add("live"); txt.textContent = "live"; }
   else if (pollOk) { el.classList.add("live"); txt.textContent = "connected"; }
   else { el.classList.remove("live"); txt.textContent = "offline"; }
@@ -221,30 +255,25 @@ function connectStream() {
   });
   es.onerror = () => {
     setLink(false);
-    // EventSource auto-retries; if it stays broken, reconnect fresh after a bit.
-    if (es.readyState === EventSource.CLOSED) {
-      setTimeout(connectStream, 5000);
-    }
+    if (es.readyState === EventSource.CLOSED) setTimeout(connectStream, 5000);
   };
 }
 
 /* ---------------- activity feed ---------------- */
 const feed = $("feed");
 const EVT_ICON = {
-  turn_start: "💬", thinking: "…", tool_run: "⚙", tool_held: "⏸", tool_rejected: "⛔",
-  reply: "✓", turn_end: "✓", error: "⚠", message_in: "💬", action_run: "⚙",
-  action_held: "⏸", action_approved: "✅", action_rejected: "⛔", reminder_sent: "🔔",
+  turn_start: "◈", thinking: "◇", tool_run: "▸", tool_held: "❚❚", tool_rejected: "✕",
+  reply: "✓", turn_end: "✓", error: "!", message_in: "◈", action_run: "▸",
+  action_held: "❚❚", action_approved: "✓", action_rejected: "✕", reminder_sent: "◔",
 };
 function eventRow(e) {
   const row = document.createElement("div");
   row.className = "evt k-" + e.kind;
   const when = e.at || e.createdAt;
-  row.innerHTML =
-    '<div class="ic"></div><div class="body"><div class="t"></div><div class="meta"></div></div>';
+  row.innerHTML = '<div class="ic"></div><div class="body"><div class="t"></div><div class="meta"></div></div>';
   row.querySelector(".ic").textContent = EVT_ICON[e.kind] || "•";
   row.querySelector(".t").textContent = e.text || e.summary || e.kind;
-  row.querySelector(".meta").textContent =
-    (e.surface ? e.surface + " · " : "") + (when ? fmtTime(when) : "");
+  row.querySelector(".meta").textContent = (e.surface ? e.surface + " · " : "") + (when ? fmtTime(when) : "");
   return row;
 }
 function pushEvent(e) {
@@ -258,8 +287,17 @@ async function refreshOverview() {
   pollOk = ok;
   paintLink();
   if (!ok) return;
-  $("model").textContent = data.model || "—";
+  if (data.tz && !tz) tz = data.tz;
   if (!thinkingEl) setState(data.status);
+
+  // today strip
+  const t = data.today || {};
+  $("today-date").textContent = t.date || "—";
+  $("today-reminders").textContent = (t.reminders || []).length;
+  const appr = $("today-approvals");
+  appr.textContent = t.pendingCount || 0;
+  appr.className = "v" + (t.pendingCount ? " warn" : "");
+  $("today-brief").textContent = buildBrief(t);
 
   // pending
   const pl = $("pending-list");
@@ -277,18 +315,18 @@ async function refreshOverview() {
   for (const r of data.reminders) {
     const el = document.createElement("div");
     el.className = "card";
-    el.innerHTML = '<div class="card-head"><span class="tier">🔔 reminder</span><span class="when"></span></div><div class="summary"></div>';
+    el.innerHTML = '<div class="card-head"><span class="tier">◔ reminder</span><span class="when"></span></div><div class="summary"></div>';
     el.querySelector(".when").textContent = fmtWhen(r.deliverAt);
     el.querySelector(".summary").textContent = r.body;
     rl.appendChild(el);
   }
 
-  // recently done (from activity)
+  // recently done
   const dl = $("done-list");
   dl.innerHTML = "";
-  const done = (data.activity || []).filter((a) =>
-    ["action_run", "action_approved", "action_rejected", "reminder_sent"].includes(a.kind)
-  ).slice(0, 10);
+  const done = (data.activity || [])
+    .filter((a) => ["action_run", "action_approved", "action_rejected", "reminder_sent"].includes(a.kind))
+    .slice(0, 10);
   if (!done.length) dl.innerHTML = '<div class="empty">Nothing yet.</div>';
   for (const a of done) dl.appendChild(eventRow(a));
 
@@ -306,11 +344,19 @@ async function refreshOverview() {
     ml.appendChild(el);
   }
 
-  // seed activity feed once
   if (!feed.dataset.seeded && data.activity) {
     feed.dataset.seeded = "1";
     for (const a of [...data.activity].reverse()) pushEvent(a);
   }
+}
+
+function buildBrief(t) {
+  const parts = [];
+  const rem = (t.reminders || []).length;
+  if (rem) parts.push(`${rem} reminder${rem > 1 ? "s" : ""} today`);
+  if (t.pendingCount) parts.push(`${t.pendingCount} thing${t.pendingCount > 1 ? "s" : ""} need${t.pendingCount > 1 ? "" : "s"} your approval`);
+  if (!parts.length) return "Nothing scheduled today. Ask me anything.";
+  return "Today: " + parts.join(" · ") + ".";
 }
 
 function pendingCard(p) {
@@ -318,8 +364,7 @@ function pendingCard(p) {
   el.className = "card";
   el.innerHTML =
     '<div class="card-head"><span class="tier t' + p.tier + '">tier ' + p.tier + '</span>' +
-    '<span class="name" style="font-weight:600;font-size:12.5px"></span>' +
-    '<span class="when"></span></div>' +
+    '<span class="name"></span><span class="when"></span></div>' +
     '<div class="summary"></div>' +
     '<div class="actions"><button class="approve">Approve</button><button class="reject">Reject</button></div>';
   el.querySelector(".name").textContent = p.actionName;
@@ -337,4 +382,4 @@ function pendingCard(p) {
   return el;
 }
 
-boot();
+start();

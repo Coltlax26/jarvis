@@ -121,6 +121,15 @@ memory, conversations, reminders, pending actions, activity — is keyed by
   every route resolves the caller from `req.session.userId`.
 - Telegram maps each `telegramId` to its user.
 
+## Theming
+
+Each user has a `theme` in `JARVIS_USERS`: `mode` (`hud` dark cyan default, or
+`light`), `accent` (hex), `background` (image URL under `/bg/`), `backgroundFit`
+(`watermark` or `cover`), `brand` (text shown by the JARVIS mark), `logo`
+(image URL shown in the top bar). `/api/me` returns it; `applyTheme()` in
+`app.js` sets `data-theme` + CSS vars. Per-user background images live in
+`src/surfaces/web/public/bg/` (git-tracked, copied to `dist/` by the build).
+
 ## Security notes
 
 - `TelegramSurface` rejects any chat id that is not mapped to a user. The web

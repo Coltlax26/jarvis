@@ -1,12 +1,40 @@
 export class ConfigError extends Error {}
 
+export type UserTheme = {
+  mode: "hud" | "light";
+  accent: string | null;
+  background: string | null;
+  /** How to place the background image: "cover" fills the screen, "watermark"
+   *  shows it small and faint (good for a logo). */
+  backgroundFit: "cover" | "watermark";
+  brand: string | null;
+  /** URL of a logo shown in the top bar next to the JARVIS mark. */
+  logo: string | null;
+};
+
 export type JarvisUser = {
   id: string;
   name: string;
   password: string;
   telegramId: string | null;
   persona: string;
+  theme: UserTheme;
 };
+
+function parseTheme(rec: Record<string, unknown>): UserTheme {
+  const t = (rec.theme as Record<string, unknown> | undefined) ?? {};
+  const mode = t.mode === "light" ? "light" : "hud";
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  return {
+    mode,
+    accent: str(t.accent),
+    background: str(t.background),
+    backgroundFit: t.backgroundFit === "cover" ? "cover" : "watermark",
+    brand: str(t.brand),
+    logo: str(t.logo),
+  };
+}
 
 export type Config = {
   anthropicApiKey: string;
@@ -55,6 +83,7 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
               ? String(rec.telegramId)
               : null,
         persona: typeof rec.persona === "string" ? rec.persona.trim() : "",
+        theme: parseTheme(rec),
       };
     });
     assertUniqueUsers(users);
@@ -76,6 +105,14 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
       password,
       telegramId: env.OWNER_TELEGRAM_ID?.trim() || null,
       persona: env.WEB_USER_PERSONA?.trim() || "",
+      theme: {
+        mode: "hud",
+        accent: null,
+        background: null,
+        backgroundFit: "watermark",
+        brand: null,
+        logo: null,
+      },
     },
   ];
 }

@@ -6,20 +6,44 @@
   <title>Jarvis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;600;700&display=swap" />
   <link rel="stylesheet" href="/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A4%96%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%235de4ff' stroke-width='1.5'/%3E%3Ccircle cx='12' cy='12' r='3' fill='%235de4ff'/%3E%3C/svg%3E" />
 </head>
 <body>
+  <div id="bg-image"></div>
 
-  <div id="login-screen">
+  <div id="boot">
+    <div class="ring">
+      <svg viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="44" stroke="#5de4ff" stroke-width="1" opacity="0.3" />
+        <circle cx="50" cy="50" r="44" stroke="#5de4ff" stroke-width="2" stroke-dasharray="30 240"
+          stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="1.4s" repeatCount="indefinite" /></circle>
+        <circle cx="50" cy="50" r="30" stroke="#5de4ff" stroke-width="1.5" />
+        <circle cx="50" cy="50" r="9" fill="#5de4ff" />
+      </svg>
+    </div>
+    <div class="line">Initializing Jarvis</div>
+    <div class="line">Loading personal profile</div>
+    <div class="line">Syncing systems</div>
+    <div class="line">Online</div>
+  </div>
+
+  <div id="login-screen" hidden>
     <div class="login-card">
-      <div class="mark">🤖</div>
-      <h1>Jarvis</h1>
-      <p>Personal assistant · private</p>
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10.5" stroke="var(--accent)" stroke-width="1" opacity="0.5" />
+          <circle cx="12" cy="12" r="6.5" stroke="var(--accent)" stroke-width="1.4" />
+          <circle cx="12" cy="12" r="2.6" fill="var(--accent)" />
+          <path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+      </div>
+      <h1>JARVIS</h1>
+      <p>Secure access</p>
       <form id="login-form">
         <input type="password" id="pw" placeholder="Password" autocomplete="current-password" autofocus />
-        <button type="submit">Enter</button>
+        <button type="submit">Authenticate</button>
       </form>
       <div class="login-msg" id="login-msg"></div>
     </div>
@@ -27,19 +51,29 @@
 
   <div id="app" hidden>
     <header class="topbar">
-      <div class="brand"><span class="logo">🤖</span> Jarvis <span class="brand-sub" id="who">Console</span></div>
+      <div class="brand">
+        <svg class="reactor" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10.5" stroke="var(--accent)" stroke-width="1" opacity="0.45" />
+          <circle cx="12" cy="12" r="7" stroke="var(--accent)" stroke-width="1.3" stroke-dasharray="3 3" />
+          <circle cx="12" cy="12" r="3" fill="var(--accent)" />
+        </svg>
+        <span class="name">JARVIS</span>
+        <span class="who" id="who">—</span>
+      </div>
       <nav class="tabs" id="tabs">
         <button class="tab active" data-view="chat">Chat</button>
         <button class="tab" data-view="tasks">Tasks <span class="badge" id="badge-tasks"></span></button>
         <button class="tab" data-view="memory">Memory</button>
         <button class="tab" data-view="activity">Activity</button>
       </nav>
+      <div class="hud-clock">
+        <div class="t" id="clock-time">--:--</div>
+        <div class="d" id="clock-date">—</div>
+      </div>
       <div class="status">
         <span><span class="dot" id="link-dot"></span> <span id="link-text">connecting</span></span>
         <span class="pill" id="state-pill">idle</span>
-        <span>model <b id="model">—</b></span>
-        <span>up <b id="clock">00:00</b></span>
-        <button class="logout" id="logout-btn" title="Log out">Log out</button>
+        <button class="logout" id="logout-btn">Log out</button>
       </div>
     </header>
 
@@ -55,6 +89,13 @@
 
     <main>
       <section class="view" id="view-chat">
+        <div id="today">
+          <div class="cell"><div class="k">Date</div><div class="v" id="today-date">—</div></div>
+          <div class="cell"><div class="k">Time</div><div class="v accent" id="today-time">--:--</div></div>
+          <div class="cell"><div class="k">Reminders today</div><div class="v" id="today-reminders">0</div></div>
+          <div class="cell"><div class="k">Needs approval</div><div class="v warn" id="today-approvals">0</div></div>
+          <div class="brief" id="today-brief"></div>
+        </div>
         <div id="log"></div>
         <form id="composer">
           <textarea id="text" rows="1" placeholder="Message Jarvis" autocomplete="off"></textarea>

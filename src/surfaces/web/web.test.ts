@@ -42,11 +42,18 @@ beforeEach(async () => {
   });
   app = createApp({
     users: [
-      { id: "colt", name: "Colt", password: "hunter2", telegramId: null, persona: "" },
-      { id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "" },
+      {
+        id: "colt", name: "Colt", password: "hunter2", telegramId: null, persona: "",
+        theme: { mode: "hud", accent: null, background: null, backgroundFit: "watermark", brand: null, logo: null },
+      },
+      {
+        id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "",
+        theme: { mode: "light", accent: "#1a5aa0", background: null, backgroundFit: "watermark", brand: "Peterson Sales", logo: null },
+      },
     ],
     sessionSecret: "x".repeat(32),
     databaseUrl: null,
+    tz: "America/New_York",
     brain,
     gate,
     memory,
