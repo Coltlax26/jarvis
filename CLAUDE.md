@@ -37,10 +37,14 @@ src/
     events.ts                   JarvisBus — in-process pub/sub of turn progress
   surfaces/                    Surface interface + registry (route replies by channel)
     telegram/                   Telegram surface
-    twilio/                     SMS surface — TwilioClient (send + webhook sig
-                                verify), inbound via POST /twilio/sms on the web app
-    web/                        the web console — login, chat, Tasks/Memory/Activity
-                                tabs, /api/overview snapshot, /api/stream (SSE)
+    twilio/                     Twilio clients: TwilioClient (SMS), TwilioVoiceClient
+                                (calls + TwiML), shared signature.ts
+    voice/                      VoiceSurface — inbound calls (greeting + Gather turn
+                                loop, POST /twilio/voice[/turn]), outbound announce
+                                calls (send()), TTS voice Polly.Brian-Neural
+    web/                        the web console + all Twilio webhooks (form-encoded,
+                                signature-verified): /twilio/sms, /twilio/voice[/turn],
+                                /twilio/voice/announce
   scheduler/                    60s loop that delivers due reminders
   server.ts                    wires everything and boots
 migrations/                    numbered .sql files, applied in order at boot

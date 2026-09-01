@@ -16,8 +16,14 @@ export class Scheduler {
   }
 
   async tick(now: Date = new Date()): Promise<number> {
-    const { rows } = await this.db.query<{ id: string; body: string; user_id: string }>(
-      `select id, body, user_id from scheduled_messages
+    const { rows } = await this.db.query<{
+      id: string;
+      body: string;
+      user_id: string;
+      channel: string;
+    }>(
+      `select id, body, user_id, coalesce(channel, 'web') as channel
+       from scheduled_messages
        where status = 'pending' and deliver_at <= $1
        order by deliver_at asc limit 20`,
       [now.toISOString()]
@@ -25,7 +31,7 @@ export class Scheduler {
     let sent = 0;
     for (const row of rows) {
       try {
-        await this.deliver({ userId: row.user_id, surface: "scheduler", text: row.body });
+        await this.deliver({ userId: row.user_id, surface: row.channel, text: row.body });
         await this.db.query(`update scheduled_messages set status = 'sent' where id = $1`, [row.id]);
         sent++;
       } catch (err) {

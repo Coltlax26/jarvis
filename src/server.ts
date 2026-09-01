@@ -15,6 +15,7 @@ import { SurfaceRegistry } from "./surfaces/registry.js";
 import { WebSurface } from "./surfaces/web/index.js";
 import { TelegramSurface } from "./surfaces/telegram/index.js";
 import { TwilioSurface } from "./surfaces/twilio/index.js";
+import { VoiceSurface } from "./surfaces/voice/index.js";
 import { Scheduler } from "./scheduler/index.js";
 
 async function main() {
@@ -47,23 +48,52 @@ async function main() {
     workspaceDir: config.workspaceDir,
     anthropicWorkspaceId: config.anthropicWorkspaceId,
   });
-  const brain = new Brain({ memory, gate, registry, runner, config, bus, activity });
+  const voiceRunner = new SdkRunner({
+    model: config.voiceModel,
+    apiKey: config.anthropicApiKey,
+    workspaceDir: config.workspaceDir,
+    anthropicWorkspaceId: config.anthropicWorkspaceId,
+    timeoutMs: 25_000,
+  });
+  const brain = new Brain({
+    memory,
+    gate,
+    registry,
+    runner,
+    voiceRunner,
+    config,
+    bus,
+    activity,
+  });
 
   const surfaces = new SurfaceRegistry();
 
-  const smsUsers = config.users.filter((u) => u.phone);
+  const phoneUsers = config.users.filter((u) => u.phone);
+  const baseUrl = config.publicUrl.replace(/\/$/, "");
+
   let twilio: TwilioSurface | undefined;
-  if (config.twilio && smsUsers.length) {
+  let voice: VoiceSurface | undefined;
+  if (config.twilio && phoneUsers.length) {
     twilio = new TwilioSurface({
       ...config.twilio,
-      users: smsUsers.map((u) => ({ phone: u.phone!, userId: u.id })),
+      users: phoneUsers.map((u) => ({ phone: u.phone!, userId: u.id })),
       brain,
       gate,
     });
     surfaces.add(twilio);
+
+    voice = new VoiceSurface({
+      ...config.twilio,
+      voice: config.voiceTts,
+      publicUrl: config.publicUrl,
+      users: phoneUsers.map((u) => ({ phone: u.phone!, userId: u.id, name: u.name })),
+      brain,
+      gate,
+    });
+    surfaces.add(voice);
   } else {
     logger.warn(
-      "SMS disabled — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER and give a user a phone"
+      "SMS/voice disabled — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER and give a user a phone"
     );
   }
 
@@ -83,10 +113,21 @@ async function main() {
       db,
       sms: twilio
         ? {
-            webhookUrl: `${config.publicUrl.replace(/\/$/, "")}/twilio/sms`,
+            webhookUrl: `${baseUrl}/twilio/sms`,
             verify: (sig, url, params) => twilio!.verify(sig, url, params),
             userForPhone: (from) => twilio!.userForPhone(from),
             handleInbound: (from, body) => twilio!.handleInbound(from, body),
+          }
+        : undefined,
+      voice: voice
+        ? {
+            incomingUrl: `${baseUrl}/twilio/voice`,
+            turnUrl: `${baseUrl}/twilio/voice/turn`,
+            announceUrl: `${baseUrl}/twilio/voice/announce`,
+            verify: (sig, url, params) => voice!.verify(sig, url, params),
+            greeting: (from) => voice!.greeting(from),
+            turn: (from, speech) => voice!.turn(from, speech),
+            announcementFor: (token) => voice!.announcementFor(token),
           }
         : undefined,
     })

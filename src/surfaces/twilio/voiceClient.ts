@@ -1,0 +1,86 @@
+import { verifyTwilioSignature } from "./signature.js";
+
+const XML_ESCAPE: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&apos;",
+};
+const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => XML_ESCAPE[c]!);
+
+export type TwiMLOptions = {
+  /** Twilio TTS voice — a refined British male, close to the movie JARVIS. */
+  voice: string;
+  /** Absolute URL Twilio should POST the caller's speech to. */
+  actionUrl?: string;
+};
+
+/** Build a TwiML document that speaks `text` then optionally listens for a reply. */
+export function conversationTwiML(text: string, opts: TwiMLOptions): string {
+  const say = `<Say voice="${esc(opts.voice)}">${esc(text)}</Say>`;
+  if (!opts.actionUrl) {
+    return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}<Hangup/></Response>`;
+  }
+  const gather =
+    `<Gather input="speech" language="en-US" speechModel="phone_call" ` +
+    `speechTimeout="auto" action="${esc(opts.actionUrl)}" method="POST"/>`;
+  // If they say nothing, Twilio falls through past the Gather — end gracefully.
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response>${say}${gather}` +
+    `<Say voice="${esc(opts.voice)}">I'll be here if you need me. Goodbye.</Say><Hangup/></Response>`
+  );
+}
+
+/** A one-way spoken message (proactive call, reminder). */
+export function announceTwiML(text: string, opts: { voice: string }): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Say voice="${esc(opts.voice)}">${esc(text)}</Say><Hangup/></Response>`
+  );
+}
+
+export class TwilioVoiceClient {
+  constructor(
+    private opts: { accountSid: string; authToken: string; fromNumber: string }
+  ) {}
+
+  /**
+   * Place an outbound call. Twilio fetches `twimlUrl` (POST) for what to do
+   * once the callee answers.
+   */
+  async placeCall(to: string, twimlUrl: string): Promise<string> {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${this.opts.accountSid}/Calls.json`;
+    const form = new URLSearchParams({
+      From: this.opts.fromNumber,
+      To: to,
+      Url: twimlUrl,
+      Method: "POST",
+    });
+    const auth = Buffer.from(
+      `${this.opts.accountSid}:${this.opts.authToken}`
+    ).toString("base64");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Twilio placeCall failed (${res.status}): ${text.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as { sid?: string };
+    return json.sid ?? "";
+  }
+
+  verify(
+    signature: string | undefined,
+    fullUrl: string,
+    params: Record<string, string>
+  ): boolean {
+    return verifyTwilioSignature(this.opts.authToken, signature, fullUrl, params);
+  }
+}

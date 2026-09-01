@@ -59,6 +59,10 @@ export type Config = {
     authToken: string;
     fromNumber: string;
   } | null;
+  /** Twilio TTS voice for phone calls. */
+  voiceTts: string;
+  /** Model used for phone calls (fast; latency matters more than depth). */
+  voiceModel: string;
   tz: string;
   workspaceDir: string;
   publicUrl: string;
@@ -204,6 +208,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionSecret,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
     twilio,
+    voiceTts: env.VOICE_TTS?.trim() || "Polly.Brian-Neural",
+    voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",
     publicUrl: env.PUBLIC_URL?.trim() || "http://localhost:3000",
