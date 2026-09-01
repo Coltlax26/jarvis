@@ -11,11 +11,22 @@ const words = (s: string): string[] =>
 export class MemoryRepo {
   constructor(private db: Db) {}
 
-  async ensureUser(id: string, name: string): Promise<void> {
+  async ensureUser(id: string, name: string, persona = ""): Promise<void> {
     await this.db.query(
-      `insert into users (id, name) values ($1, $2) on conflict (id) do nothing`,
-      [id, name]
+      `insert into users (id, name, persona) values ($1, $2, $3)
+       on conflict (id) do update set name = excluded.name, persona = excluded.persona`,
+      [id, name, persona]
     );
+  }
+
+  async getUser(
+    id: string
+  ): Promise<{ id: string; name: string; persona: string } | null> {
+    const { rows } = await this.db.query<{ id: string; name: string; persona: string }>(
+      `select id, name, coalesce(persona, '') as persona from users where id = $1`,
+      [id]
+    );
+    return rows[0] ?? null;
   }
 
   async getOrCreateConversation(userId: string): Promise<string> {

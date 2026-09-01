@@ -58,17 +58,22 @@ export class Brain {
 
   async handle(msg: IncomingMessage): Promise<OutgoingMessage> {
     const conversationId = await this.memory.getOrCreateConversation(msg.userId);
+    const user = await this.memory.getUser(msg.userId);
+    const userName = user?.name ?? "there";
+    const persona = user?.persona ?? "";
     const history = await this.memory.recentMessages(conversationId, 30);
     const memories = await this.memory.searchMemories(msg.userId, msg.text, 12);
 
     const actions = this.registry.list();
     const systemPrompt = buildSystemPrompt({
+      userName,
+      persona,
       tz: this.config.tz,
       now: new Date(),
       actions,
       memories,
     });
-    const userPrompt = buildUserPrompt(history, msg.text);
+    const userPrompt = buildUserPrompt(history, msg.text, userName);
 
     await this.memory.addMessage({
       conversationId,

@@ -7,13 +7,11 @@ export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private db: Db;
   private deliver: DeliverFn;
-  private userId: string;
   private intervalMs: number;
 
-  constructor(opts: { db: Db; deliver: DeliverFn; userId: string; intervalMs?: number }) {
+  constructor(opts: { db: Db; deliver: DeliverFn; intervalMs?: number }) {
     this.db = opts.db;
     this.deliver = opts.deliver;
-    this.userId = opts.userId;
     this.intervalMs = opts.intervalMs ?? 60_000;
   }
 

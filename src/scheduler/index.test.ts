@@ -30,7 +30,6 @@ describe("Scheduler", () => {
     await schedule("future", new Date(Date.now() + 3600_000));
     const s = new Scheduler({
       db,
-      userId: "colt",
       deliver: async (m) => {
         delivered.push(m.text);
       },
@@ -51,7 +50,6 @@ describe("Scheduler", () => {
     await schedule("boom", new Date(Date.now() - 1000));
     const s = new Scheduler({
       db,
-      userId: "colt",
       deliver: async () => {
         throw new Error("no");
       },

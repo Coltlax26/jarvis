@@ -16,9 +16,6 @@ import { WebSurface } from "./surfaces/web/index.js";
 import { TelegramSurface } from "./surfaces/telegram/index.js";
 import { Scheduler } from "./scheduler/index.js";
 
-const USER_ID = "colt";
-const USER_NAME = "Colt";
-
 async function main() {
   const config = loadConfig();
   await mkdir(config.workspaceDir, { recursive: true });
@@ -31,7 +28,11 @@ async function main() {
   logger.info("migrations complete", { applied });
 
   const memory = new MemoryRepo(db);
-  await memory.ensureUser(USER_ID, USER_NAME);
+  for (const u of config.users) {
+    await memory.ensureUser(u.id, u.name, u.persona);
+  }
+  logger.info("users ready", { users: config.users.map((u) => u.name) });
+
   const activity = new ActivityRepo(db);
   const bus = new JarvisBus();
 
@@ -51,44 +52,41 @@ async function main() {
   surfaces.add(
     new WebSurface({
       port: config.port,
-      password: config.webPassword,
+      users: config.users,
       sessionSecret: config.sessionSecret,
-      userId: USER_ID,
+      publicUrl: config.publicUrl,
       brain,
       gate,
       memory,
       activity,
       bus,
       db,
-      publicUrl: config.publicUrl,
     })
   );
-  if (config.telegramBotToken && config.ownerTelegramId) {
+
+  const telegramUsers = config.users.filter((u) => u.telegramId);
+  if (config.telegramBotToken && telegramUsers.length) {
     surfaces.add(
       new TelegramSurface({
         token: config.telegramBotToken,
-        ownerId: config.ownerTelegramId,
-        userId: USER_ID,
         brain,
         gate,
+        users: telegramUsers.map((u) => ({ telegramId: u.telegramId!, userId: u.id })),
       })
     );
   } else {
-    logger.warn("Telegram disabled — set TELEGRAM_BOT_TOKEN and OWNER_TELEGRAM_ID to enable");
+    logger.warn(
+      "Telegram disabled — set TELEGRAM_BOT_TOKEN and give at least one user a telegramId"
+    );
   }
 
   await surfaces.startAll();
 
   const scheduler = new Scheduler({
     db,
-    userId: USER_ID,
     deliver: async (msg) => {
       await surfaces.deliver(msg);
-      await activity.log({
-        userId: msg.userId,
-        kind: "reminder_sent",
-        summary: msg.text,
-      });
+      await activity.log({ userId: msg.userId, kind: "reminder_sent", summary: msg.text });
     },
   });
   scheduler.start();

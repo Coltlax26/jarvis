@@ -108,11 +108,23 @@ Railway, via `railway.json` (Nixpacks build, `npm start`). Add a Postgres
 database in the same Railway project — `DATABASE_URL` is then set
 automatically. See `docs/SETUP.md` for the full one-step-at-a-time checklist.
 
+## Users
+
+Multi-user. Each person has their own password, name, optional `persona`
+(appended to their system prompt), and optional `telegramId`. Everything —
+memory, conversations, reminders, pending actions, activity — is keyed by
+`user_id`, so users are fully separate.
+
+- Config: `JARVIS_USERS` (JSON array) for multiple people, or `WEB_PASSWORD`
+  (+ `WEB_USER_NAME` / `WEB_USER_PERSONA`) for a single user. See `.env.example`.
+- Web login matches the password to a user and stores `userId` in the session;
+  every route resolves the caller from `req.session.userId`.
+- Telegram maps each `telegramId` to its user.
+
 ## Security notes
 
-- Single user. `TelegramSurface` rejects any chat id other than
-  `OWNER_TELEGRAM_ID`. The web surface requires `WEB_PASSWORD` and uses a
-  signed session cookie.
+- `TelegramSurface` rejects any chat id that is not mapped to a user. The web
+  surface requires a matching password and uses a signed session cookie.
 - The Agent SDK's file/shell tools are scoped to `WORKSPACE_DIR`
   (`./workspace` by default), never the repo root.
 - All secrets come from environment variables. `.env` is gitignored —

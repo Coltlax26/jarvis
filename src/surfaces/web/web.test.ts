@@ -21,6 +21,7 @@ beforeEach(async () => {
   db = await makeTestDb();
   const memory = new MemoryRepo(db);
   await memory.ensureUser("colt", "Colt");
+  await memory.ensureUser("rich", "Rich");
   const registry = new ActionRegistry();
   registerBuiltins(registry, { memory, db });
   const gate = new ActionGate(db, registry);
@@ -40,9 +41,11 @@ beforeEach(async () => {
     activity,
   });
   app = createApp({
-    password: "hunter2",
+    users: [
+      { id: "colt", name: "Colt", password: "hunter2", telegramId: null, persona: "" },
+      { id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "" },
+    ],
     sessionSecret: "x".repeat(32),
-    userId: "colt",
     brain,
     gate,
     memory,
@@ -144,8 +147,23 @@ describe("WebSurface", () => {
     expect((res.body.activity as unknown[]).length).toBeGreaterThan(0);
   });
 
-  it("reports login success message", async () => {
-    const res = await call("POST", "/login", { body: { password: "hunter2" } });
-    expect(res.body.message).toBe("Connected");
+  it("greets the user by name on login", async () => {
+    const colt = await call("POST", "/login", { body: { password: "hunter2" } });
+    expect(colt.body.message).toBe("Hello Colt!");
+    const rich = await call("POST", "/login", { body: { password: "richpw" } });
+    expect(rich.body.message).toBe("Hello Rich!");
+  });
+
+  it("keeps each user's data separate", async () => {
+    const colt = await call("POST", "/login", { body: { password: "hunter2" } });
+    await call("POST", "/api/message", { cookie: colt.cookie, body: { text: "hi from colt" } });
+    const rich = await call("POST", "/login", { body: { password: "richpw" } });
+    const me = await call("GET", "/api/me", { cookie: rich.cookie });
+    expect(me.body.name).toBe("Rich");
+    const richView = await call("GET", "/api/overview", { cookie: rich.cookie });
+    // Rich has no messages yet — Colt's turn must not show up for Rich
+    expect((richView.body.messages as unknown[]).length).toBe(0);
+    const coltView = await call("GET", "/api/overview", { cookie: colt.cookie });
+    expect((coltView.body.messages as unknown[]).length).toBeGreaterThan(0);
   });
 });

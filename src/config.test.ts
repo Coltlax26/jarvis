@@ -3,20 +3,57 @@ import { loadConfig, ConfigError } from "./config.js";
 
 const base = {
   ANTHROPIC_API_KEY: "sk-ant-test",
-  WEB_PASSWORD: "hunter2",
   SESSION_SECRET: "x".repeat(32),
 };
 
 describe("loadConfig", () => {
-  it("parses a minimal valid env with PGlite fallback", () => {
-    const c = loadConfig({ ...base } as NodeJS.ProcessEnv);
-    expect(c.anthropicApiKey).toBe("sk-ant-test");
+  it("falls back to a single user from WEB_PASSWORD", () => {
+    const c = loadConfig({ ...base, WEB_PASSWORD: "hunter2" } as NodeJS.ProcessEnv);
+    expect(c.users).toHaveLength(1);
+    expect(c.users[0]).toMatchObject({ id: "colt", name: "Colt", password: "hunter2" });
     expect(c.databaseUrl).toBeNull();
     expect(c.port).toBe(3000);
-    expect(c.tz).toBe("America/Denver");
   });
 
-  it("collects all missing required vars into one error", () => {
+  it("names the single fallback user from WEB_USER_NAME", () => {
+    const c = loadConfig({
+      ...base,
+      WEB_PASSWORD: "pw",
+      WEB_USER_NAME: "Rich",
+    } as NodeJS.ProcessEnv);
+    expect(c.users[0]).toMatchObject({ id: "rich", name: "Rich" });
+  });
+
+  it("parses JARVIS_USERS as a JSON array", () => {
+    const c = loadConfig({
+      ...base,
+      JARVIS_USERS: JSON.stringify([
+        { name: "Colt", password: "a", telegramId: "111" },
+        { name: "Rich", password: "b" },
+      ]),
+    } as NodeJS.ProcessEnv);
+    expect(c.users.map((u) => u.name)).toEqual(["Colt", "Rich"]);
+    expect(c.users[0]).toMatchObject({ id: "colt", telegramId: "111" });
+    expect(c.users[1]).toMatchObject({ id: "rich", telegramId: null });
+  });
+
+  it("rejects JARVIS_USERS with a shared password", () => {
+    expect(() =>
+      loadConfig({
+        ...base,
+        JARVIS_USERS: JSON.stringify([
+          { name: "Colt", password: "same" },
+          { name: "Rich", password: "same" },
+        ]),
+      } as NodeJS.ProcessEnv)
+    ).toThrow(ConfigError);
+  });
+
+  it("errors when neither JARVIS_USERS nor WEB_PASSWORD is set", () => {
+    expect(() => loadConfig({ ...base } as NodeJS.ProcessEnv)).toThrow(ConfigError);
+  });
+
+  it("collects missing core vars into one error", () => {
     try {
       loadConfig({} as NodeJS.ProcessEnv);
       throw new Error("should have thrown");
@@ -24,7 +61,6 @@ describe("loadConfig", () => {
       expect(e).toBeInstanceOf(ConfigError);
       const msg = (e as ConfigError).message;
       expect(msg).toContain("ANTHROPIC_API_KEY");
-      expect(msg).toContain("WEB_PASSWORD");
       expect(msg).toContain("SESSION_SECRET");
     }
   });
@@ -32,6 +68,7 @@ describe("loadConfig", () => {
   it("passes DATABASE_URL through when set", () => {
     const c = loadConfig({
       ...base,
+      WEB_PASSWORD: "pw",
       DATABASE_URL: "postgres://u:p@h/db",
     } as NodeJS.ProcessEnv);
     expect(c.databaseUrl).toBe("postgres://u:p@h/db");

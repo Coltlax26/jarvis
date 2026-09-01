@@ -38,7 +38,8 @@ loginForm.addEventListener("submit", async (e) => {
   if (status === 200) {
     loginMsg.className = "login-msg ok";
     loginMsg.textContent = "✓ " + (data.message || "Connected");
-    setTimeout(enterApp, 550);
+    const name = data.user && data.user.name;
+    setTimeout(() => enterApp(name), 550);
   } else {
     loginMsg.className = "login-msg err";
     loginMsg.textContent = data.error || "Wrong password";
@@ -47,13 +48,25 @@ loginForm.addEventListener("submit", async (e) => {
 });
 
 async function boot() {
-  const { data } = await api("/api/session");
-  if (data && data.authed) enterApp();
+  const { status, data } = await api("/api/me");
+  if (status === 200 && data.name) enterApp(data.name);
 }
 
-function enterApp() {
+let greeted = false;
+async function enterApp(name) {
   loginScreen.classList.add("gone");
   $("app").hidden = false;
+  if (!name) {
+    const me = await api("/api/me");
+    name = me.data && me.data.name;
+  }
+  if (name) {
+    $("who").textContent = name;
+    if (!greeted) {
+      greeted = true;
+      bubble("Hello " + name + "! What can I do for you?", "jarvis");
+    }
+  }
   startClock();
   connectStream();
   refreshOverview();
@@ -86,7 +99,30 @@ function startClock() {
 const log = $("log");
 let thinkingEl = null;
 
+// Arc-reactor style "J" mark for Jarvis messages.
+const JARVIS_MARK =
+  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle cx="12" cy="12" r="10" stroke="#57e3ff" stroke-width="1.4" opacity="0.55"/>' +
+  '<circle cx="12" cy="12" r="6" stroke="#57e3ff" stroke-width="1.4"/>' +
+  '<circle cx="12" cy="12" r="2.3" fill="#57e3ff"/>' +
+  '<path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3" stroke="#57e3ff" stroke-width="1.4" stroke-linecap="round"/>' +
+  "</svg>";
+
 function bubble(text, who) {
+  if (who === "jarvis") {
+    const row = document.createElement("div");
+    row.className = "msg-row";
+    const av = document.createElement("span");
+    av.className = "javatar";
+    av.innerHTML = JARVIS_MARK;
+    const el = document.createElement("div");
+    el.className = "msg jarvis";
+    el.textContent = text;
+    row.append(av, el);
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
   const el = document.createElement("div");
   el.className = "msg " + who;
   el.textContent = text;
