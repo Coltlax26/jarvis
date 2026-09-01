@@ -39,8 +39,19 @@
         <span class="pill" id="state-pill">idle</span>
         <span>model <b id="model">—</b></span>
         <span>up <b id="clock">00:00</b></span>
+        <button class="logout" id="logout-btn" title="Log out">Log out</button>
       </div>
     </header>
+
+    <div class="confirm-backdrop" id="logout-confirm" hidden>
+      <div class="confirm-box">
+        <p>Are you sure you want to log out?</p>
+        <div class="confirm-actions">
+          <button id="logout-cancel">Cancel</button>
+          <button id="logout-yes" class="danger">Log out</button>
+        </div>
+      </div>
+    </div>
 
     <main>
       <section class="view" id="view-chat">

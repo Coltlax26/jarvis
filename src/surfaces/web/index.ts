@@ -2,7 +2,8 @@ import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
-import session from "express-session";
+import session, { type Store } from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { logger } from "../../logger.js";
 import type { JarvisUser } from "../../config.js";
 import type { Brain } from "../../core/brain.js";
@@ -19,6 +20,7 @@ type Deps = {
   users: JarvisUser[];
   sessionSecret: string;
   publicUrl: string;
+  databaseUrl: string | null;
   brain: Brain;
   gate: ActionGate;
   memory: MemoryRepo;
@@ -32,12 +34,31 @@ type SessionShape = { userId?: string };
 export function createApp(deps: Deps): Express {
   const app = express();
   app.use(express.json());
+
+  // Persist sessions in Postgres in production so logins survive redeploys.
+  // Locally / in tests (no DATABASE_URL) fall back to the in-memory store.
+  let store: Store | undefined;
+  if (deps.databaseUrl) {
+    const PgStore = connectPgSimple(session);
+    store = new PgStore({
+      conString: deps.databaseUrl,
+      tableName: "session",
+      createTableIfMissing: true,
+    });
+  }
+
   app.use(
     session({
+      store,
       secret: deps.sessionSecret,
       resave: false,
       saveUninitialized: false,
-      cookie: { httpOnly: true, sameSite: "lax", secure: deps.publicUrl.startsWith("https") },
+      cookie: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: deps.publicUrl.startsWith("https"),
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      },
     })
   );
 

@@ -23,6 +23,7 @@ describe("migrations", () => {
         "pending_actions",
         "scheduled_messages",
         "schema_migrations",
+        "session",
         "users",
       ])
     );

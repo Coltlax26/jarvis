@@ -46,6 +46,7 @@ beforeEach(async () => {
       { id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "" },
     ],
     sessionSecret: "x".repeat(32),
+    databaseUrl: null,
     brain,
     gate,
     memory,

@@ -1,6 +1,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+let inApp = false;
 const api = async (url, opts = {}) => {
   const r = await fetch(url, {
     method: opts.body ? "POST" : "GET",
@@ -9,6 +10,10 @@ const api = async (url, opts = {}) => {
   });
   let data = {};
   try { data = await r.json(); } catch { /* non-json */ }
+  // Session expired mid-use (e.g. server redeployed) — send back to login.
+  if (r.status === 401 && inApp && url.startsWith("/api/") && url !== "/api/me") {
+    location.reload();
+  }
   return { status: r.status, ok: r.ok, data };
 };
 const fmtTime = (iso) => {
@@ -73,6 +78,18 @@ async function enterApp(name) {
   setInterval(refreshOverview, 8000);
   setTimeout(() => loginScreen.remove(), 500);
 }
+
+/* ---------------- logout ---------------- */
+const logoutConfirm = $("logout-confirm");
+$("logout-btn").addEventListener("click", () => { logoutConfirm.hidden = false; });
+$("logout-cancel").addEventListener("click", () => { logoutConfirm.hidden = true; });
+$("logout-yes").addEventListener("click", async () => {
+  await api("/logout", { body: {} });
+  location.reload();
+});
+logoutConfirm.addEventListener("click", (e) => {
+  if (e.target === logoutConfirm) logoutConfirm.hidden = true;
+});
 
 /* ---------------- tabs ---------------- */
 $("tabs").addEventListener("click", (e) => {

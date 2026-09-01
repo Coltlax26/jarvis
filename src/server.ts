@@ -55,6 +55,7 @@ async function main() {
       users: config.users,
       sessionSecret: config.sessionSecret,
       publicUrl: config.publicUrl,
+      databaseUrl: config.databaseUrl,
       brain,
       gate,
       memory,
