@@ -34,6 +34,12 @@ type SessionShape = { userId?: string };
 
 export function createApp(deps: Deps): Express {
   const app = express();
+  const behindProxy = deps.publicUrl.startsWith("https");
+  // Railway (and most PaaS) terminate TLS at a proxy and forward plain HTTP.
+  // Without trusting the proxy, express-session sees an insecure connection and
+  // refuses to set a `secure` cookie — so the session never sticks and the user
+  // bounces straight back to the login screen.
+  if (behindProxy) app.set("trust proxy", 1);
   app.use(express.json());
 
   // Persist sessions in Postgres in production so logins survive redeploys.
@@ -57,7 +63,7 @@ export function createApp(deps: Deps): Express {
       cookie: {
         httpOnly: true,
         sameSite: "lax",
-        secure: deps.publicUrl.startsWith("https"),
+        secure: behindProxy,
         maxAge: 30 * 24 * 60 * 60 * 1000,
       },
     })
