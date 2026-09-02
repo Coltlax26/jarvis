@@ -17,7 +17,7 @@ Live URL: https://web-production-a733d.up.railway.app
 | 2 | Voice settings panel (Settings tab, live-editable) | ✅ live | 41a7ef2 |
 | 3 | ElevenLabs voice engine (natural TTS, `<Play>` mp3) | ✅ live | 45d50e4 |
 | 4 | `place_call` Tier-2 action — Jarvis phones other people | ✅ live | 238309b |
-| 5 | Gmail + Calendar actions (code; needs Google sign-in) | ✅ live, inert | 0570376 |
+| 5 | Gmail + Calendar actions | ✅ **live & connected** | 0570376 |
 | 6 | `browse` Tier-2 action (headless browser) — code only | ✅ live, inert | 1dbfe50 |
 | — | Fix: Telegram 409 was crashing every deploy | ✅ live | b3e31ba |
 
@@ -50,9 +50,15 @@ Live URL: https://web-production-a733d.up.railway.app
   started` and the process stays up.
 
 ### Item 5 notes
-- Ships **inert** — `Google (Gmail + Calendar) disabled` in the deploy logs
-  until `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set. Migration 008
-  applied.
+- **Done and verified live 2026-09-02** — Google Cloud project set up, Colt
+  connected his account (petersonsales42@gmail.com), inbox + calendar reads
+  confirmed working in the console.
+- Consent screen is in **Testing mode**, which means Google expires the
+  connection after ~7 days — you'll need to re-click "Connect Google" in
+  Settings about once a week. To make it permanent we'd add a privacy-policy
+  page to Jarvis and publish the app (small follow-up, noted below).
+- Also fixed a bug found during testing: read-type actions (inbox, calendar)
+  weren't handing their results back to the model. Fixed in `b9ee99b`.
 - Once connected: **read_inbox** and **list_events** are Tier 0 (Jarvis just
   does them); **draft_email**, **add_event**, **move_event** are Tier 1 (held
   for your approval). Drafts are saved to Gmail, never sent.
@@ -90,16 +96,17 @@ Live URL: https://web-production-a733d.up.railway.app
 
 ## Build summary
 
-All 7 planned items are done. Items 1–4 are fully live; items 5 and 6 ship their
-code live but **inert** (5 needs Google credentials, 6 needs Chromium in the
-container) — both by design per the plan. A latent Telegram crash that was
-failing deploys got found and fixed along the way.
+All 7 planned items are done. Items 1–5 are fully live and working (Gmail +
+Calendar connected the morning of 2026-09-02). Item 6 (`browse`) ships its code
+live but inert — it needs Chromium in the container. A latent Telegram crash
+that was failing deploys got found and fixed, and a bug where read actions
+didn't return their results to the model was fixed after Google went live.
 
-Final state of `main`: `npm test` (91 passing), `npm run build`, `npm run
+Final state of `main`: `npm test` (92 passing), `npm run build`, `npm run
 typecheck` all green. Deployed and healthy at
 https://web-production-a733d.up.railway.app/health.
 
-## Needs your action in the morning
+## Needs your action
 
 1. **Railway trial credit is low (~$4.97 when checked at ~3am).** Add a payment
    method or the service will stop. Railway dashboard → project
@@ -114,23 +121,33 @@ https://web-production-a733d.up.railway.app/health.
 3. **Rich's phone number** — not yet added to `JARVIS_USERS`. Add via the
    settings/DB (blocked from doing it via CLI because it needs the password in
    the command). His number: +1 484 880 9096.
-4. **Google Cloud project + OAuth consent** — needed to activate item 5
-   (Gmail/Calendar). Steps:
-   1. console.cloud.google.com → create a project ("Jarvis").
-   2. APIs & Services → Enable APIs → enable **Gmail API** and **Google
-      Calendar API**.
-   3. APIs & Services → OAuth consent screen → External → app name "Jarvis",
-      your email as support + developer contact. Add scopes
-      `gmail.modify` and `calendar`. Add yourself (and Rich) as **Test users**.
-   4. Credentials → Create Credentials → OAuth client ID → **Web application**.
-      Authorised redirect URI:
-      `https://web-production-a733d.up.railway.app/auth/google/callback`
-   5. Copy the client ID + secret. In Railway set `GOOGLE_CLIENT_ID` and
-      `GOOGLE_CLIENT_SECRET`, redeploy.
-   6. Log into the console → Settings → **Connect Google** → approve.
-   (I can do steps 1–5 via your browser in the morning if you'd rather.)
+4. **Google Cloud / Gmail + Calendar — DONE.** Set up and connected on
+   2026-09-02. Only lingering item: the consent screen is in "Testing" mode so
+   the connection drops after ~7 days and you re-click "Connect Google" in
+   Settings. To kill that: add a privacy page to Jarvis and publish the Google
+   app (small follow-up).
 5. **(Optional) Chromium for the `browse` action** — see the Item 6 notes above.
    Low urgency; fine to leave for a later phase.
+6. **(Optional) Obsidian integration** — you asked about this; parked as a
+   future phase, see the Roadmap section.
+
+## Roadmap — parked ideas
+
+### Obsidian integration (future phase)
+Obsidian is a local Markdown notes app; its files are just `.md` in a folder, so
+an agent can read and write them directly. Useful for Jarvis:
+- **A shared knowledge base** — Jarvis writes research, meeting notes, project
+  docs, and your "remember this" facts into your vault as linked Markdown you
+  can browse and edit in Obsidian.
+- **Website / project work** — when Jarvis builds a site or app for you, the
+  spec, plan, and notes live in the vault; you review and edit them in Obsidian
+  and Jarvis picks up your changes.
+- **Daily notes** — Jarvis appends to a daily note (calls made, emails drafted,
+  reminders set) so there's a readable log outside the console.
+
+How: either sync a vault folder into Jarvis's workspace (Git or a cloud drive),
+or run a small local "bridge" so Jarvis on Railway can reach the vault on your
+Mac. Not started — revisit once the core is solid.
 
 ## How to test each capability
 
