@@ -18,6 +18,36 @@ Live URL: https://web-production-a733d.up.railway.app
 | 3 | ElevenLabs voice engine (natural TTS, `<Play>` mp3) | ✅ live | 45d50e4 |
 | 4 | `place_call` Tier-2 action — Jarvis phones other people | ✅ live | 238309b |
 | 5 | Gmail + Calendar actions (code; needs Google sign-in) | ✅ live, inert | 0570376 |
+| 6 | `browse` Tier-2 action (headless browser) — code only | ✅ live, inert | 1dbfe50 |
+| — | Fix: Telegram 409 was crashing every deploy | ✅ live | b3e31ba |
+
+### Item 6 notes
+- The `browse` action + `BrowserRunner` (via `playwright-core`, no bundled
+  browser download) are deployed but **inert** — `browser groundwork
+  chromium=false` in the logs, because Railway's container has no Chromium.
+- `browse({url})` is Tier 2. When a browser is present it loads the page with a
+  real JS engine, returns the rendered text, and streams a screenshot to the
+  console at an authed `/browse/shot/:id.png` URL.
+- **Deferred to you:** installing Chromium on Railway. I tried a `nixpacks.toml`
+  with `aptPkgs = ["chromium", ...]` and two deploys failed (the image balloons;
+  also compounded by the Telegram bug below). The plan said to stop at the code
+  if the browser won't install cleanly — so it's reverted. Options for the
+  morning: (a) switch the Railway build to a Dockerfile on
+  `mcr.microsoft.com/playwright:v1.x-jammy`; (b) retry `nixpacks.toml` now that
+  the Telegram crash is fixed; (c) leave `browse` for a later phase. Low
+  urgency.
+
+### Fix: Telegram 409 crash (b3e31ba)
+- **This was breaking every deploy, not just item 6.** grammy's `bot.start()`
+  rejects with a 409 when the previous instance still holds the Telegram
+  long-poll during a rolling deploy. It was run as `void bot.start(...)`, so the
+  rejection was unhandled and Node exited. Older deploys got lucky on a restart;
+  item 6 crash-looped past Railway's 10-retry limit and the deploy was marked
+  failed.
+- Now: `bot.catch()` for handler errors, `runPolling()` retries `start()` with
+  backoff on transient failures, and a process-level `unhandledRejection` guard.
+  Deploy logs now show `telegram polling stopped; retrying … → telegram polling
+  started` and the process stays up.
 
 ### Item 5 notes
 - Ships **inert** — `Google (Gmail + Calendar) disabled` in the deploy logs
@@ -45,9 +75,8 @@ Live URL: https://web-production-a733d.up.railway.app
   the last few lines of each.
 - `voice_calls` table added (migration 007, applied on deploy — logs confirm
   `applied=["007_voice_calls.sql"]`).
-- Known wart (pre-existing, self-heals): during each deploy the old and new
-  instances briefly both poll Telegram; the losing one crashes with a grammy
-  409 and Railway restarts it. No action needed, but worth knowing.
+- (The grammy-409-on-deploy wart mentioned earlier is now **fixed** — see the
+  Telegram fix entry above.)
 
 ### Item 3 notes
 - New **Voice engine** dropdown in Settings: `Twilio` (built-in, instant) or
@@ -59,16 +88,23 @@ Live URL: https://web-production-a733d.up.railway.app
 - `ELEVENLABS_API_KEY` is already set in Railway; deploy logs confirm
   `voice surface ready ... elevenlabs=true`.
 
-## Still in progress / queued tonight
+## Build summary
 
-- Item 6 — `browse` Tier-2 action (Playwright headless browser).
-- Item 7 — polish + this brief finalised.
+All 7 planned items are done. Items 1–4 are fully live; items 5 and 6 ship their
+code live but **inert** (5 needs Google credentials, 6 needs Chromium in the
+container) — both by design per the plan. A latent Telegram crash that was
+failing deploys got found and fixed along the way.
+
+Final state of `main`: `npm test` (91 passing), `npm run build`, `npm run
+typecheck` all green. Deployed and healthy at
+https://web-production-a733d.up.railway.app/health.
 
 ## Needs your action in the morning
 
-1. **Railway trial credit is low (~$4.97 when checked).** Add a payment method
-   or the service will stop. Railway dashboard → project `helpful-gentleness`
-   → Usage.
+1. **Railway trial credit is low (~$4.97 when checked at ~3am).** Add a payment
+   method or the service will stop. Railway dashboard → project
+   `helpful-gentleness` → Usage. **This is the most important one** — everything
+   above goes offline without it.
 2. **Twilio "call status" webhook** — set it so the Voice tab knows when an
    *inbound* call ends: Twilio console → Phone Numbers → +1 610 571 8533 → Voice
    → "A call status changes" →
@@ -93,6 +129,8 @@ Live URL: https://web-production-a733d.up.railway.app
       `GOOGLE_CLIENT_SECRET`, redeploy.
    6. Log into the console → Settings → **Connect Google** → approve.
    (I can do steps 1–5 via your browser in the morning if you'd rather.)
+5. **(Optional) Chromium for the `browse` action** — see the Item 6 notes above.
+   Low urgency; fine to leave for a later phase.
 
 ## How to test each capability
 
