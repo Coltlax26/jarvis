@@ -234,6 +234,32 @@ async function refreshVoice() {
   const calls = (data.calls || []).slice(0, 20);
   if (!calls.length) h.innerHTML = '<div class="empty">No calls yet.</div>';
   for (const c of calls) h.appendChild(eventRow(c));
+
+  const ob = $("voice-outbound");
+  if (ob) {
+    ob.innerHTML = "";
+    const list = (data.outbound || []).slice(0, 20);
+    if (!list.length) ob.innerHTML = '<div class="empty">None yet.</div>';
+    for (const c of list) {
+      const row = document.createElement("div");
+      row.className = "ob-call";
+      const head = document.createElement("div");
+      head.className = "ob-head";
+      head.textContent = `→ ${c.counterparty} · ${c.status}`;
+      const why = document.createElement("div");
+      why.className = "ob-why";
+      why.textContent = c.purpose;
+      row.appendChild(head);
+      row.appendChild(why);
+      for (const line of (c.transcript || []).slice(-8)) {
+        const l = document.createElement("div");
+        l.className = "ob-line " + (line.speaker === "jarvis" ? "jarvis" : "them");
+        l.textContent = (line.speaker === "jarvis" ? "Jarvis: " : "Them: ") + line.text;
+        row.appendChild(l);
+      }
+      ob.appendChild(row);
+    }
+  }
 }
 
 function addPhoneLine(text, who) {

@@ -12,6 +12,7 @@ import { Brain } from "../../core/brain.js";
 import { FakeRunner } from "../../core/fakeRunner.js";
 import type { Config } from "../../config.js";
 import { VoiceSurface } from "./index.js";
+import { OutboundCallRepo } from "./calls.js";
 
 let db: Db;
 let voice: VoiceSurface;
@@ -53,6 +54,25 @@ beforeEach(async () => {
 afterEach(async () => {
   await db.close();
 });
+
+function makeOutboundSurface(
+  calls: OutboundCallRepo,
+  runner: { run: () => Promise<{ text: string; costUsd: number }> }
+): VoiceSurface {
+  return new VoiceSurface({
+    accountSid: "AC1",
+    authToken: "tok",
+    fromNumber: "+15550001111",
+    voice: "Polly.Brian-Neural",
+    publicUrl: "https://jarvis.example.com",
+    users: [{ phone: "+15551234567", userId: "colt", name: "Colt", greeting: null, signoff: null }],
+    brain: { handle: async () => ({ userId: "colt", surface: "voice", text: "" }) } as never,
+    gate: {} as never,
+    calls,
+    outboundRunner: runner as never,
+    ownerName: () => "Colt",
+  });
+}
 
 describe("VoiceSurface", () => {
   it("greets a known caller by name and opens a Gather", async () => {
@@ -169,6 +189,63 @@ describe("VoiceSurface", () => {
     const twiml = await elVoice.greeting("+15551234567", "CA3");
     expect(twiml).toContain("<Say");
     expect(twiml).not.toContain("<Play>");
+  });
+
+  it("runs an outbound call: greeting, a turn, then hangs up on [[END]]", async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ sid: "CAout" }), { status: 200 })) as typeof fetch;
+    try {
+      const scripted = [
+        "Hello, this is Jarvis calling for Colt about a table for two.",
+        "Wonderful, thank you. Goodbye. [[END]]",
+      ];
+      let n = 0;
+      const runner = {
+        run: async () => ({ text: scripted[n++] ?? "Goodbye. [[END]]", costUsd: 0 }),
+      };
+      const calls = new OutboundCallRepo(db);
+      const ob = makeOutboundSurface(calls, runner);
+
+      const created = await ob.placeOutboundCall({
+        to: "+16105550000",
+        purpose: "book a table for two at 7",
+        ownerId: "colt",
+      });
+
+      const greet = await ob.outboundGreeting(created.id, "CAout");
+      expect(greet).toContain("Jarvis calling for Colt");
+      expect(greet).toContain("<Gather");
+
+      const turn = await ob.outboundTurn(created.id, "CAout", "Sure, 7pm works");
+      expect(turn).toContain("Goodbye");
+      expect(turn).not.toContain("[[END]]");
+      expect(turn).toContain("<Hangup/>");
+
+      const row = await calls.get(created.id);
+      expect(row?.status).toBe("completed");
+      expect(row?.transcript.map((l) => l.speaker)).toEqual(["jarvis", "them", "jarvis"]);
+      expect(row?.transcript[1]?.text).toBe("Sure, 7pm works");
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+
+  it("marks the call failed when Twilio rejects placeCall", async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("bad request", { status: 400 })) as typeof fetch;
+    try {
+      const calls = new OutboundCallRepo(db);
+      const ob = makeOutboundSurface(calls, { run: async () => ({ text: "hi", costUsd: 0 }) });
+      await expect(
+        ob.placeOutboundCall({ to: "+16105550000", purpose: "x", ownerId: "colt" })
+      ).rejects.toThrow(/Twilio/);
+      const [row] = await calls.recentForOwner("colt");
+      expect(row?.status).toBe("failed");
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
   });
 
   it("verifies its own signature scheme", () => {

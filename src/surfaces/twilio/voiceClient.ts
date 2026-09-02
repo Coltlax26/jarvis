@@ -61,7 +61,11 @@ export class TwilioVoiceClient {
    * Place an outbound call. Twilio fetches `twimlUrl` (POST) for what to do
    * once the callee answers.
    */
-  async placeCall(to: string, twimlUrl: string): Promise<string> {
+  async placeCall(
+    to: string,
+    twimlUrl: string,
+    opts: { statusCallback?: string } = {}
+  ): Promise<string> {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${this.opts.accountSid}/Calls.json`;
     const form = new URLSearchParams({
       From: this.opts.fromNumber,
@@ -69,6 +73,11 @@ export class TwilioVoiceClient {
       Url: twimlUrl,
       Method: "POST",
     });
+    if (opts.statusCallback) {
+      form.set("StatusCallback", opts.statusCallback);
+      form.set("StatusCallbackMethod", "POST");
+      form.append("StatusCallbackEvent", "completed");
+    }
     const auth = Buffer.from(
       `${this.opts.accountSid}:${this.opts.authToken}`
     ).toString("base64");

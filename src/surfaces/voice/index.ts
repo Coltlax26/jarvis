@@ -5,6 +5,8 @@ import type { ActionGate } from "../../actions/gate.js";
 import type { ActivityRepo } from "../../activity/repo.js";
 import type { JarvisBus, JarvisEventKind } from "../../core/events.js";
 import type { Surface } from "../types.js";
+import type { ModelRunner } from "../../core/types.js";
+import type { OutboundCallRepo, OutboundCall } from "./calls.js";
 import { parseCommand } from "../telegram/parse.js";
 import {
   TwilioVoiceClient,
@@ -48,6 +50,9 @@ export class VoiceSurface implements Surface {
   private turnUrl: string;
   private incomingUrl: string;
   private announceBase: string;
+  private outboundBase: string;
+  /** Per-outbound-call scratch: empty-turn counter, keyed by our call id. */
+  private outboundEmpties = new Map<string, number>();
   private announcements = new Map<string, { text: string; r: VoiceResolved; expires: number }>();
   private audio = new Map<string, { mp3: Buffer; expires: number }>();
   /** Per-call scratch state, keyed by Twilio CallSid. */
@@ -67,6 +72,10 @@ export class VoiceSurface implements Surface {
       bus?: JarvisBus;
       activity?: ActivityRepo;
       elevenLabs?: ElevenLabsClient;
+      /** Outbound-call store + model, for the Tier-2 place_call action. */
+      calls?: OutboundCallRepo;
+      outboundRunner?: ModelRunner;
+      ownerName?: (userId: string) => string;
       resolve?: (userId: string, base: VoiceResolved) => Promise<VoiceResolved>;
     }
   ) {
@@ -84,6 +93,7 @@ export class VoiceSurface implements Surface {
     this.turnUrl = `${base}/twilio/voice/turn`;
     this.announceBase = `${base}/twilio/voice/announce`;
     this.audioBase = `${base}/voice/audio`;
+    this.outboundBase = `${base}/twilio/voice/outbound`;
   }
 
   private async resolved(user: VoiceUser): Promise<VoiceResolved> {
@@ -309,6 +319,226 @@ export class VoiceSurface implements Surface {
     }
     const playUrl = await this.playUrlFor(entry.text, entry.r);
     return announceTwiML(entry.text, { voice: entry.r.voice, playUrl });
+  }
+
+  // ---- Outbound calls (Tier-2 place_call action) ----
+
+  outboundUrls(): { incoming: string; turn: string; status: string } {
+    return {
+      incoming: this.outboundBase,
+      turn: `${this.outboundBase}/turn`,
+      status: `${this.outboundBase}/status`,
+    };
+  }
+
+  /** Place a call to a non-user and run a goal-directed spoken conversation. */
+  async placeOutboundCall(input: {
+    to: string;
+    purpose: string;
+    ownerId: string;
+  }): Promise<{ id: string }> {
+    if (!this.deps.calls) throw new Error("Outbound calling is not configured.");
+    const call = await this.deps.calls.create({
+      ownerId: input.ownerId,
+      counterparty: input.to,
+      purpose: input.purpose,
+    });
+    try {
+      const sid = await this.client.placeCall(
+        input.to,
+        `${this.outboundBase}?c=${call.id}`,
+        { statusCallback: `${this.outboundBase}/status?c=${call.id}` }
+      );
+      if (sid) await this.deps.calls.attachSid(call.id, sid);
+    } catch (err) {
+      await this.deps.calls.setStatus(call.id, "failed");
+      throw err;
+    }
+    this.emit(input.ownerId, "call_started", `Calling ${input.to}`, {
+      direction: "outbound",
+      callId: call.id,
+    });
+    void this.deps.activity?.log({
+      userId: input.ownerId,
+      kind: "call_started",
+      summary: `Called ${input.to} — ${input.purpose}`,
+    });
+    return { id: call.id };
+  }
+
+  private outboundSystemPrompt(call: OutboundCall): string {
+    const owner = this.deps.ownerName?.(call.ownerId) ?? "the person I represent";
+    return [
+      `You are Jarvis, a polite assistant making a phone call on behalf of ${owner}.`,
+      `Your goal for this call: ${call.purpose}`,
+      "Speak naturally, one or two short sentences per turn, the way a person would on the phone.",
+      "Do not mention that you are an AI unless asked directly. If asked, be honest.",
+      "When the goal is met, or the other person wants to end the call, thank them and say a brief goodbye.",
+      'End your final turn with the token "[[END]]" so the call can hang up.',
+    ].join(" ");
+  }
+
+  private outboundUserPrompt(call: OutboundCall, latest: string | null): string {
+    const lines = call.transcript.map(
+      (l) => `${l.speaker === "jarvis" ? "You" : "Them"}: ${l.text}`
+    );
+    if (latest) lines.push(`Them: ${latest}`);
+    if (!lines.length) {
+      return "The call has just connected. Greet them and explain why you are calling.";
+    }
+    return `Transcript so far:\n${lines.join("\n")}\n\nYour next turn:`;
+  }
+
+  private async outboundModelTurn(
+    call: OutboundCall,
+    latest: string | null
+  ): Promise<{ text: string; done: boolean }> {
+    const runner = this.deps.outboundRunner;
+    if (!runner) return { text: "I have to go now. Goodbye.", done: true };
+    try {
+      const res = await runner.run({
+        systemPrompt: this.outboundSystemPrompt(call),
+        userPrompt: this.outboundUserPrompt(call, latest),
+        toolActions: [],
+        onToolAttempt: async () => ({ allow: false, message: "no tools on calls" }),
+      });
+      const done = /\[\[END\]\]/.test(res.text);
+      const text = res.text.replace(/\[\[END\]\]/g, "").trim() || "Thank you. Goodbye.";
+      return { text, done };
+    } catch (err) {
+      logger.error("outbound model turn failed", err);
+      return { text: "I'm sorry, I have to go. Goodbye.", done: true };
+    }
+  }
+
+  /** TwiML when the callee answers. `id` is our voice_calls id. */
+  async outboundGreeting(id: string, callSid: string): Promise<string> {
+    const call = await this.deps.calls?.get(id);
+    if (!call) {
+      return announceTwiML("Sorry, this call is no longer valid. Goodbye.", {
+        voice: this.defaultVoice,
+      });
+    }
+    if (callSid && call.callSid !== callSid) {
+      await this.deps.calls!.attachSid(id, callSid);
+    }
+    const r = await this.resolvedForOwner(call.ownerId);
+    const { text, done } = await this.outboundModelTurn(call, null);
+    await this.deps.calls!.appendLine(id, { speaker: "jarvis", text });
+    this.emit(call.ownerId, "call_transcript", text, {
+      speaker: "jarvis",
+      direction: "outbound",
+      callId: id,
+    });
+    if (done) {
+      await this.deps.calls!.setStatus(id, "completed");
+      this.emit(call.ownerId, "call_ended", "Call ended", { direction: "outbound", callId: id });
+      return this.hangupLine(text, r);
+    }
+    return conversationTwiML(text, {
+      voice: r.voice,
+      playUrl: await this.playUrlFor(text, r),
+      actionUrl: `${this.outboundBase}/turn?c=${id}`,
+      speechTimeout: r.speechTimeout,
+    });
+  }
+
+  /** TwiML for each spoken turn of an outbound call. */
+  async outboundTurn(id: string, callSid: string, speech: string): Promise<string> {
+    void callSid;
+    const call = await this.deps.calls?.get(id);
+    if (!call) {
+      return announceTwiML("Sorry, goodbye.", { voice: this.defaultVoice });
+    }
+    const r = await this.resolvedForOwner(call.ownerId);
+    const said = speech.trim();
+
+    if (!said) {
+      const empties = (this.outboundEmpties.get(id) ?? 0) + 1;
+      this.outboundEmpties.set(id, empties);
+      if (empties < 2) {
+        return conversationTwiML("Are you still there?", {
+          voice: r.voice,
+          playUrl: await this.playUrlFor("Are you still there?", r),
+          actionUrl: `${this.outboundBase}/turn?c=${id}`,
+          speechTimeout: r.speechTimeout,
+        });
+      }
+      this.outboundEmpties.delete(id);
+      await this.deps.calls!.setStatus(id, "completed");
+      this.emit(call.ownerId, "call_ended", "Call ended", { direction: "outbound", callId: id });
+      return this.hangupLine("I'll try again later. Goodbye.", r);
+    }
+    this.outboundEmpties.delete(id);
+    await this.deps.calls!.appendLine(id, { speaker: "them", text: said });
+    this.emit(call.ownerId, "call_transcript", said, {
+      speaker: "them",
+      direction: "outbound",
+      callId: id,
+    });
+
+    const reloaded = (await this.deps.calls!.get(id))!;
+    const { text, done } = await this.outboundModelTurn(reloaded, null);
+    await this.deps.calls!.appendLine(id, { speaker: "jarvis", text });
+    this.emit(call.ownerId, "call_transcript", text, {
+      speaker: "jarvis",
+      direction: "outbound",
+      callId: id,
+    });
+    if (done) {
+      await this.deps.calls!.setStatus(id, "completed");
+      this.emit(call.ownerId, "call_ended", "Call ended", { direction: "outbound", callId: id });
+      void this.deps.activity?.log({
+        userId: call.ownerId,
+        kind: "call_ended",
+        summary: `Call to ${call.counterparty} ended`,
+      });
+      return this.hangupLine(text, r);
+    }
+    return conversationTwiML(text, {
+      voice: r.voice,
+      playUrl: await this.playUrlFor(text, r),
+      actionUrl: `${this.outboundBase}/turn?c=${id}`,
+      speechTimeout: r.speechTimeout,
+    });
+  }
+
+  /** Twilio status callback for an outbound call. */
+  async outboundStatus(id: string, status: string): Promise<void> {
+    if (!["completed", "busy", "failed", "no-answer", "canceled"].includes(status)) return;
+    const call = await this.deps.calls?.get(id);
+    if (!call || call.status === "completed") return;
+    this.outboundEmpties.delete(id);
+    await this.deps.calls!.setStatus(id, status === "completed" ? "completed" : "failed");
+    this.emit(call.ownerId, "call_ended", "Call ended", { direction: "outbound", callId: id });
+    void this.deps.activity?.log({
+      userId: call.ownerId,
+      kind: "call_ended",
+      summary: `Call to ${call.counterparty} ended`,
+    });
+  }
+
+  async outboundHistory(ownerId: string, limit = 20): Promise<OutboundCall[]> {
+    return (await this.deps.calls?.recentForOwner(ownerId, limit)) ?? [];
+  }
+
+  private async resolvedForOwner(ownerId: string): Promise<VoiceResolved> {
+    const known = this.byUserId.get(ownerId);
+    if (known) return this.resolved(known);
+    const base: VoiceResolved = {
+      voice: this.defaultVoice,
+      greeting: null,
+      signoff: null,
+      speechTimeout: this.defaultSpeechTimeout,
+      provider: this.deps.elevenLabs ? "elevenlabs" : "twilio",
+      elVoiceId: null,
+    };
+    if (!this.deps.resolve) return base;
+    try {
+      return await this.deps.resolve(ownerId, base);
+    } catch {
+      return base;
+    }
   }
 
   async start(): Promise<void> {
