@@ -77,6 +77,7 @@ type Deps = {
   sms?: SmsHook;
   voice?: VoiceHook;
   google?: GoogleHook;
+  browseShot?: (id: string) => Buffer | null;
 };
 
 export type GoogleHook = {
@@ -479,6 +480,15 @@ export function createApp(deps: Deps): Express {
       const mp3 = voice.audioFor(id);
       if (!mp3) return res.status(404).end();
       res.set("Content-Type", "audio/mpeg").send(mp3);
+    });
+  }
+
+  if (deps.browseShot) {
+    app.get("/browse/shot/:id", requireAuth, (req, res) => {
+      const id = String(req.params.id ?? "").replace(/\.png$/, "");
+      const png = deps.browseShot!(id);
+      if (!png) return res.status(404).end();
+      res.set("Content-Type", "image/png").send(png);
     });
   }
 
