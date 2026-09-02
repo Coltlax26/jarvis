@@ -17,6 +17,20 @@ Live URL: https://web-production-a733d.up.railway.app
 | 2 | Voice settings panel (Settings tab, live-editable) | ✅ live | 41a7ef2 |
 | 3 | ElevenLabs voice engine (natural TTS, `<Play>` mp3) | ✅ live | 45d50e4 |
 | 4 | `place_call` Tier-2 action — Jarvis phones other people | ✅ live | 238309b |
+| 5 | Gmail + Calendar actions (code; needs Google sign-in) | ✅ live, inert | 0570376 |
+
+### Item 5 notes
+- Ships **inert** — `Google (Gmail + Calendar) disabled` in the deploy logs
+  until `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set. Migration 008
+  applied.
+- Once connected: **read_inbox** and **list_events** are Tier 0 (Jarvis just
+  does them); **draft_email**, **add_event**, **move_event** are Tier 1 (held
+  for your approval). Drafts are saved to Gmail, never sent.
+- A background job checks connected calendars every 5 min and gives you a
+  "*'Meeting' starts in 15 minutes*" nudge in the console.
+- **Connect Google** button is in the Settings tab (shows "not configured"
+  until the env vars are set).
+- Setup walkthrough is in the morning tasks below.
 
 ### Item 4 notes
 - Ask Jarvis (any surface) to call someone: "call the pizza place at 610-555-0000
@@ -47,8 +61,6 @@ Live URL: https://web-production-a733d.up.railway.app
 
 ## Still in progress / queued tonight
 
-- Item 5 — Gmail + Calendar (code ships inert; needs Google Cloud OAuth in the
-  morning — ~15 min walkthrough).
 - Item 6 — `browse` Tier-2 action (Playwright headless browser).
 - Item 7 — polish + this brief finalised.
 
@@ -67,7 +79,20 @@ Live URL: https://web-production-a733d.up.railway.app
    settings/DB (blocked from doing it via CLI because it needs the password in
    the command). His number: +1 484 880 9096.
 4. **Google Cloud project + OAuth consent** — needed to activate item 5
-   (Gmail/Calendar). Walkthrough in the morning.
+   (Gmail/Calendar). Steps:
+   1. console.cloud.google.com → create a project ("Jarvis").
+   2. APIs & Services → Enable APIs → enable **Gmail API** and **Google
+      Calendar API**.
+   3. APIs & Services → OAuth consent screen → External → app name "Jarvis",
+      your email as support + developer contact. Add scopes
+      `gmail.modify` and `calendar`. Add yourself (and Rich) as **Test users**.
+   4. Credentials → Create Credentials → OAuth client ID → **Web application**.
+      Authorised redirect URI:
+      `https://web-production-a733d.up.railway.app/auth/google/callback`
+   5. Copy the client ID + secret. In Railway set `GOOGLE_CLIENT_ID` and
+      `GOOGLE_CLIENT_SECRET`, redeploy.
+   6. Log into the console → Settings → **Connect Google** → approve.
+   (I can do steps 1–5 via your browser in the morning if you'd rather.)
 
 ## How to test each capability
 
@@ -80,3 +105,7 @@ Live URL: https://web-production-a733d.up.railway.app
   verified numbers — you have $20 balance so this may be lifted). Then message
   Jarvis: "call +1 XXX XXX XXXX and tell them this is a test, then hang up".
   Approve the pending action. Watch the Voice tab for the live transcript.
+- **Gmail / Calendar:** after connecting Google, ask "what's in my inbox?" and
+  "what's on my calendar this week?" (both answer immediately). Then "draft a
+  reply to the last email saying I'll get back to them Monday" — it appears as a
+  pending Tier-1 action; approve it and check Gmail's Drafts folder.
