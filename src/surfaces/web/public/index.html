@@ -43,7 +43,7 @@
       <nav class="tabs" id="tabs">
         <button class="tab active" data-view="chat">Chat</button>
         <button class="tab" data-view="tasks">Tasks <span class="badge" id="badge-tasks"></span></button>
-        <button class="tab" data-view="memory">Memory</button>
+        <button class="tab" data-view="brain">Brain</button>
         <button class="tab" data-view="activity">Activity</button>
         <button class="tab" data-view="settings">Settings</button>
       </nav>
@@ -93,8 +93,17 @@
         <div id="done-list"></div>
       </section>
 
-      <section class="view" id="view-memory" hidden>
+      <section class="view" id="view-brain" hidden>
+        <h2>Standing instructions</h2>
+        <p class="settings-note">Tell Jarvis how to work — what to focus on, your style, rules to always follow. This is added to every reply. Saves as you stop typing.</p>
+        <textarea id="brain-instructions" rows="6" placeholder="e.g. When I ask for leads, always give me a table with name, town, phone, and website yes/no. Push me to follow up on prospects. Keep answers short."></textarea>
+        <span id="brain-saved" class="saved-tag"></span>
+
         <h2>What Jarvis knows about you <span class="count" id="memory-count">0</span></h2>
+        <form id="brain-add" class="brain-add">
+          <input type="text" id="brain-fact" placeholder="Teach Jarvis a fact — a client, a preference, a goal…" maxlength="2000" />
+          <button type="submit">Add</button>
+        </form>
         <div id="memory-list"></div>
       </section>
 

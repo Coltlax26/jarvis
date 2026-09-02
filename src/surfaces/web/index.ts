@@ -241,6 +241,46 @@ export function createApp(deps: Deps): Express {
     res.json({ ok: true });
   });
 
+  // Brain tab: the facts Jarvis remembers + live standing instructions.
+  app.get("/api/brain", requireAuth, async (req, res) => {
+    const userId = uid(req);
+    const [memories, instructions] = await Promise.all([
+      deps.memory.listMemories(userId, 300),
+      deps.settings.get(userId, "instructions", ""),
+    ]);
+    res.json({
+      memories: memories.map((m) => ({
+        id: m.id,
+        content: m.content,
+        source: m.source,
+        createdAt: m.createdAt,
+      })),
+      instructions,
+    });
+  });
+
+  app.post("/api/brain/memory", requireAuth, async (req, res) => {
+    const content = String((req.body as { content?: unknown })?.content ?? "").trim();
+    if (content.length < 3) return res.status(400).json({ error: "too short" });
+    const m = await deps.memory.addMemory({
+      userId: uid(req),
+      content: content.slice(0, 2000),
+      source: "console",
+    });
+    res.json({ ok: true, id: m.id });
+  });
+
+  app.delete("/api/brain/memory/:id", requireAuth, async (req, res) => {
+    const ok = await deps.memory.deleteMemory(uid(req), String(req.params.id));
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  app.put("/api/brain/instructions", requireAuth, async (req, res) => {
+    const text = String((req.body as { text?: unknown })?.text ?? "").slice(0, 4000);
+    await deps.settings.set(uid(req), "instructions", text);
+    res.json({ ok: true });
+  });
+
   // Google (Gmail + Calendar) connect flow.
   if (deps.google) {
     const g = deps.google;

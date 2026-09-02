@@ -92,6 +92,7 @@ async function main() {
     config,
     bus,
     activity,
+    settings,
   });
 
   const surfaces = new SurfaceRegistry();

@@ -135,6 +135,7 @@ $("tabs").addEventListener("click", (e) => {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
   const view = btn.dataset.view;
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
+  if (view === "brain") loadBrain();
 });
 
 /* ---------------- clock ---------------- */
@@ -325,20 +326,6 @@ async function refreshOverview() {
   if (!done.length) dl.innerHTML = '<div class="empty">Nothing yet.</div>';
   for (const a of done) dl.appendChild(eventRow(a));
 
-  // memory
-  const ml = $("memory-list");
-  ml.innerHTML = "";
-  $("memory-count").textContent = data.memories.length;
-  if (!data.memories.length) ml.innerHTML = '<div class="empty">Jarvis has not saved anything yet.</div>';
-  for (const m of data.memories) {
-    const el = document.createElement("div");
-    el.className = "mem";
-    el.innerHTML = '<div class="c"></div><div class="when"></div>';
-    el.querySelector(".c").textContent = m.content;
-    el.querySelector(".when").textContent = fmtWhen(m.createdAt);
-    ml.appendChild(el);
-  }
-
   if (!feed.dataset.seeded && data.activity) {
     feed.dataset.seeded = "1";
     for (const a of [...data.activity].reverse()) pushEvent(a);
@@ -352,6 +339,57 @@ function buildBrief(t) {
   if (t.pendingCount) parts.push(`${t.pendingCount} thing${t.pendingCount > 1 ? "s" : ""} need${t.pendingCount > 1 ? "" : "s"} your approval`);
   if (!parts.length) return "Nothing scheduled today. Ask me anything.";
   return "Today: " + parts.join(" · ") + ".";
+}
+
+/* ---------------- brain tab ---------------- */
+let brainInstrTimer = null;
+async function loadBrain() {
+  const { ok, data } = await api("/api/brain");
+  if (!ok) return;
+  const ta = $("brain-instructions");
+  if (document.activeElement !== ta) ta.value = data.instructions || "";
+  const ml = $("memory-list");
+  ml.innerHTML = "";
+  $("memory-count").textContent = data.memories.length;
+  if (!data.memories.length) ml.innerHTML = '<div class="empty">Nothing saved yet. Add a fact above, or just tell Jarvis things in chat.</div>';
+  for (const m of data.memories) {
+    const el = document.createElement("div");
+    el.className = "mem";
+    el.innerHTML = '<div class="c"></div><button class="mem-del" title="Forget this">×</button>';
+    el.querySelector(".c").textContent = m.content;
+    el.querySelector(".mem-del").addEventListener("click", async () => {
+      el.style.opacity = "0.4";
+      await api("/api/brain/memory/" + m.id, { method: "DELETE" });
+      loadBrain();
+    });
+    ml.appendChild(el);
+  }
+}
+const brainAdd = $("brain-add");
+if (brainAdd) {
+  brainAdd.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inp = $("brain-fact");
+    const content = inp.value.trim();
+    if (content.length < 3) return;
+    inp.value = "";
+    await api("/api/brain/memory", { method: "POST", body: { content } });
+    loadBrain();
+  });
+}
+const brainInstr = $("brain-instructions");
+if (brainInstr) {
+  const save = async () => {
+    await api("/api/brain/instructions", { method: "PUT", body: { text: brainInstr.value } });
+    const tag = $("brain-saved");
+    tag.textContent = "✓ saved";
+    setTimeout(() => (tag.textContent = ""), 2000);
+  };
+  brainInstr.addEventListener("input", () => {
+    clearTimeout(brainInstrTimer);
+    brainInstrTimer = setTimeout(save, 900);
+  });
+  brainInstr.addEventListener("blur", save);
 }
 
 /* ---------------- settings ---------------- */

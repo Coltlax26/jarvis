@@ -100,6 +100,15 @@ export class MemoryRepo {
     return rows.map(rowToMemory);
   }
 
+  /** Remove one fact. Scoped to the user so a bad id can't touch another's data. */
+  async deleteMemory(userId: string, id: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `delete from memories where id = $1 and user_id = $2 returning id`,
+      [id, userId]
+    );
+    return rows.length > 0;
+  }
+
   async searchMemories(
     userId: string,
     queryText: string,

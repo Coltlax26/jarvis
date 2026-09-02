@@ -353,3 +353,29 @@ h2:first-child { margin-top: 4px; }
 .ob-line { font-size: .88em; margin: 2px 0; }
 .ob-line.jarvis { color: var(--accent, #5de4ff); }
 .ob-line.them { opacity: .85; }
+
+/* brain tab */
+#view-brain textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 90px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; font: 400 13px var(--sans, sans-serif);
+}
+#view-brain textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.saved-tag { display: inline-block; font: 400 11px var(--mono); color: var(--accent); margin: 4px 0 18px; height: 14px; }
+.brain-add { display: flex; gap: 8px; margin-bottom: 12px; }
+.brain-add input {
+  flex: 1; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 9px 12px; font-size: 13px;
+}
+.brain-add input:focus { outline: none; border-color: var(--accent); }
+.brain-add button {
+  background: var(--accent); color: var(--bg); border: 0; border-radius: var(--radius);
+  padding: 0 16px; font-weight: 600; cursor: pointer;
+}
+.mem { display: flex; align-items: flex-start; gap: 10px; }
+.mem .c { flex: 1; }
+.mem-del {
+  background: transparent; border: 1px solid var(--line); color: var(--ink-faint);
+  border-radius: 6px; width: 24px; height: 24px; line-height: 1; cursor: pointer; flex: 0 0 auto;
+}
+.mem-del:hover { border-color: var(--danger, #e5534b); color: var(--danger, #e5534b); }

@@ -4,6 +4,8 @@ import type { Memory, Message } from "../memory/types.js";
 export function buildSystemPrompt(opts: {
   userName: string;
   persona?: string;
+  /** Live extra guidance the user edits in the console Brain tab. */
+  instructions?: string;
   tz: string;
   now: Date;
   actions: Action[];
@@ -25,11 +27,15 @@ export function buildSystemPrompt(opts: {
   const personaLine = opts.persona?.trim()
     ? `\nYour role for ${who}: ${opts.persona.trim()}\n`
     : "";
+  const instructionsLine = opts.instructions?.trim()
+    ? `\n${who}'s standing instructions to you (edited live in the console):\n${opts.instructions.trim()}\n`
+    : "";
 
   return [
     `You are Jarvis, ${who}'s personal assistant. You are talking with ${who}.`,
     "Be direct and useful. Keep prose plain and simple: short sentences, minimal punctuation, not clever-sounding.",
     personaLine,
+    instructionsLine,
     `Current time: ${opts.now.toISOString()} (timezone: ${opts.tz}).`,
     "",
     `What you know about ${who}:`,

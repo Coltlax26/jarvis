@@ -3,6 +3,7 @@ import type { ActionGate } from "../actions/gate.js";
 import type { ActionRegistry } from "../actions/registry.js";
 import type { MemoryRepo } from "../memory/repo.js";
 import type { ActivityRepo } from "../activity/repo.js";
+import type { SettingsRepo } from "../settings/repo.js";
 import type { JarvisBus, JarvisEvent, JarvisEventKind } from "./events.js";
 import { buildSystemPrompt, buildUserPrompt } from "./promptBuilder.js";
 import type { IncomingMessage, ModelRunner, OutgoingMessage, ToolDecision } from "./types.js";
@@ -15,6 +16,7 @@ export class Brain {
   private config: Pick<Config, "tz" | "workspaceDir">;
   private bus?: JarvisBus;
   private activity?: ActivityRepo;
+  private settings?: SettingsRepo;
 
   constructor(deps: {
     memory: MemoryRepo;
@@ -24,6 +26,7 @@ export class Brain {
     config: Pick<Config, "tz" | "workspaceDir">;
     bus?: JarvisBus;
     activity?: ActivityRepo;
+    settings?: SettingsRepo;
   }) {
     this.memory = deps.memory;
     this.gate = deps.gate;
@@ -32,6 +35,7 @@ export class Brain {
     this.config = deps.config;
     this.bus = deps.bus;
     this.activity = deps.activity;
+    this.settings = deps.settings;
   }
 
   private emit(
@@ -63,6 +67,10 @@ export class Brain {
     const persona = user?.persona ?? "";
     const history = await this.memory.recentMessages(conversationId, 30);
     const memories = await this.memory.searchMemories(msg.userId, msg.text, 12);
+    // Live, user-editable extra guidance from the console Brain tab.
+    const instructions = this.settings
+      ? await this.settings.get(msg.userId, "instructions", "")
+      : "";
 
     const runner = this.runner;
 
@@ -70,6 +78,7 @@ export class Brain {
     const systemPrompt = buildSystemPrompt({
       userName,
       persona,
+      instructions,
       tz: this.config.tz,
       now: new Date(),
       actions,
