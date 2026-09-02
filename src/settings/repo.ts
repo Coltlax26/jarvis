@@ -45,14 +45,9 @@ export class SettingsRepo {
   }
 }
 
-/** Keys the console Settings tab exposes, with their env-var fallback source. */
-export const SETTING_KEYS = [
-  "voice_tts",
-  "voice_greeting",
-  "voice_signoff",
-  "voice_speech_timeout",
-  "voice_model",
-  "voice_provider",
-  "voice_el_voice_id",
-] as const;
+/**
+ * Keys the console Settings tab exposes. Empty for now — the mechanism is kept
+ * for future per-user settings.
+ */
+export const SETTING_KEYS = [] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];

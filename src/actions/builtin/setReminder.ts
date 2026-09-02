@@ -5,21 +5,20 @@ import type { Action } from "../types.js";
 
 export function setReminderAction(
   db: Db
-): Action<{ deliverAt: string; body: string; channel?: "web" | "sms" | "voice" }> {
+): Action<{ deliverAt: string; body: string; channel?: "web" | "telegram" }> {
   return {
     name: "set_reminder",
     tier: 0,
     description:
       "Schedule a proactive message at a specific time. deliverAt must be an ISO 8601 " +
-      "timestamp. channel controls how it is delivered: 'web' (shows in the console, " +
-      "default), 'sms' (a text), or 'voice' (Jarvis phones them and reads it aloud). " +
-      "Use 'voice' or 'sms' only when they ask for a call or text.",
+      "timestamp. channel is 'web' (shows in the console, default) or 'telegram' " +
+      "(sent as a Telegram message).",
     schema: z.object({
       deliverAt: z
         .string()
         .refine((s) => !Number.isNaN(Date.parse(s)), "must be an ISO timestamp"),
       body: z.string().min(1),
-      channel: z.enum(["web", "sms", "voice"]).optional(),
+      channel: z.enum(["web", "telegram"]).optional(),
     }),
     summarize: (i) => `reminder @ ${i.deliverAt} (${i.channel ?? "web"}): ${i.body}`,
     run: async (i, ctx) => {

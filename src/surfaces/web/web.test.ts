@@ -45,43 +45,28 @@ beforeEach(async () => {
   app = createApp({
     users: [
       {
-        id: "colt", name: "Colt", password: "hunter2", telegramId: null, phone: null, persona: "", voiceGreeting: null, voiceSignoff: null,
+        id: "colt", name: "Colt", password: "hunter2", telegramId: null, persona: "",
         theme: { mode: "hud", accent: null, background: null, backgroundFit: "watermark", brand: null, logo: null },
       },
       {
-        id: "rich", name: "Rich", password: "richpw", telegramId: null, phone: null, persona: "", voiceGreeting: null, voiceSignoff: null,
+        id: "rich", name: "Rich", password: "richpw", telegramId: null, persona: "",
         theme: { mode: "light", accent: "#1a5aa0", background: null, backgroundFit: "watermark", brand: "Peterson Sales", logo: null },
       },
     ],
     sessionSecret: "x".repeat(32),
     databaseUrl: null,
     tz: "America/New_York",
+    model: "claude-sonnet-5",
     brain,
     gate,
     memory,
     activity,
     settings,
-    settingDefaults: {
-      voice_tts: "Google.en-GB-Chirp3-HD-Charon",
-      voice_speech_timeout: "auto",
-      voice_model: "claude-haiku-4-5",
-    },
+    settingDefaults: {},
     bus,
     db,
     publicUrl: "http://localhost",
-    sms: {
-      webhookUrl: "http://localhost/twilio/sms",
-      verify: (sig) => sig === "good-sig",
-      userForPhone: (from) => (from === "+15551234567" ? "colt" : undefined),
-      handleInbound: async (from, body) => {
-        smsInbound.push(`${from}:${body}`);
-      },
-    },
   });
-});
-const smsInbound: string[] = [];
-beforeEach(() => {
-  smsInbound.length = 0;
 });
 afterEach(async () => {
   await db.close();
@@ -171,7 +156,7 @@ describe("WebSurface", () => {
     await call("POST", "/api/message", { cookie: login.cookie, body: { text: "hello" } });
     const res = await call("GET", "/api/overview", { cookie: login.cookie });
     expect(res.status).toBe(200);
-    expect(res.body.model).toBe("claude-haiku-4-5");
+    expect(res.body.model).toBe("claude-sonnet-5");
     expect(Array.isArray(res.body.pending)).toBe(true);
     expect(Array.isArray(res.body.memories)).toBe(true);
     expect(Array.isArray(res.body.activity)).toBe(true);
@@ -179,37 +164,11 @@ describe("WebSurface", () => {
     expect((res.body.activity as unknown[]).length).toBeGreaterThan(0);
   });
 
-  it("accepts a signed Twilio SMS webhook and routes it", async () => {
-    const res = await call("POST", "/twilio/sms", {
-      form: "From=%2B15551234567&Body=hey",
-      headers: { "X-Twilio-Signature": "good-sig" },
-    });
-    expect(res.status).toBe(200);
-    expect(smsInbound).toEqual(["+15551234567:hey"]);
-  });
-
-  it("rejects an unsigned Twilio webhook", async () => {
-    const res = await call("POST", "/twilio/sms", { form: "From=%2B15551234567&Body=hey" });
-    expect(res.status).toBe(403);
-    expect(smsInbound).toEqual([]);
-  });
-
-  it("returns settings with defaults, then persists an override", async () => {
+  it("serves an empty settings payload (mechanism kept, no keys yet)", async () => {
     const login = await call("POST", "/login", { body: { password: "hunter2" } });
-    const before = await call("GET", "/api/settings", { cookie: login.cookie });
-    const beforeS = before.body.settings as Record<string, { value: string; overridden: boolean } | undefined>;
-    expect(beforeS.voice_tts!.value).toBe("Google.en-GB-Chirp3-HD-Charon");
-    expect(beforeS.voice_tts!.overridden).toBe(false);
-
-    await call("PUT", "/api/settings", {
-      cookie: login.cookie,
-      body: { voice_tts: "Polly.Arthur-Neural", voice_greeting: "Hello sir." },
-    });
-    const after = await call("GET", "/api/settings", { cookie: login.cookie });
-    const afterS = after.body.settings as Record<string, { value: string; overridden: boolean } | undefined>;
-    expect(afterS.voice_tts!.value).toBe("Polly.Arthur-Neural");
-    expect(afterS.voice_tts!.overridden).toBe(true);
-    expect(afterS.voice_greeting!.value).toBe("Hello sir.");
+    const res = await call("GET", "/api/settings", { cookie: login.cookie });
+    expect(res.status).toBe(200);
+    expect(res.body.settings).toEqual({});
   });
 
   it("greets the user by name on login", async () => {

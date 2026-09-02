@@ -43,7 +43,6 @@
       <nav class="tabs" id="tabs">
         <button class="tab active" data-view="chat">Chat</button>
         <button class="tab" data-view="tasks">Tasks <span class="badge" id="badge-tasks"></span></button>
-        <button class="tab" data-view="voice">Voice <span class="badge" id="badge-voice"></span></button>
         <button class="tab" data-view="memory">Memory</button>
         <button class="tab" data-view="activity">Activity</button>
         <button class="tab" data-view="settings">Settings</button>
@@ -78,11 +77,6 @@
           <div class="cell"><div class="k">Needs approval</div><div class="v warn" id="today-approvals">0</div></div>
           <div class="brief" id="today-brief"></div>
         </div>
-        <div id="call-banner" hidden>
-          <span class="ph">📞</span>
-          <span id="call-banner-text">On a call</span>
-          <span class="live-dot"></span>
-        </div>
         <div id="log"></div>
         <form id="composer">
           <textarea id="text" rows="1" placeholder="Message Jarvis" autocomplete="off"></textarea>
@@ -99,19 +93,6 @@
         <div id="done-list"></div>
       </section>
 
-      <section class="view" id="view-voice" hidden>
-        <div id="voice-status" class="panel">
-          <div class="vs-headline" id="voice-headline">No active call</div>
-          <div class="vs-sub" id="voice-sub">Call your Jarvis number to talk</div>
-        </div>
-        <h2>Live transcript</h2>
-        <div id="voice-transcript"><div class="empty">Nothing yet.</div></div>
-        <h2>Calls Jarvis placed</h2>
-        <div id="voice-outbound"><div class="empty">None yet.</div></div>
-        <h2>Recent calls</h2>
-        <div id="voice-history"><div class="empty">No calls yet.</div></div>
-      </section>
-
       <section class="view" id="view-memory" hidden>
         <h2>What Jarvis knows about you <span class="count" id="memory-count">0</span></h2>
         <div id="memory-list"></div>
@@ -123,43 +104,15 @@
       </section>
 
       <section class="view" id="view-settings" hidden>
-        <h2>Voice agent</h2>
-        <p class="settings-note">Changes take effect on the next call — no restart needed.</p>
-        <form id="settings-form" class="settings-form">
-          <label>Voice engine
-            <select name="voice_provider">
-              <option value="twilio">Twilio (built-in, instant)</option>
-              <option value="elevenlabs">ElevenLabs (natural, needs API key)</option>
-            </select>
-          </label>
-          <label>TTS voice (Twilio engine)
-            <select name="voice_tts" id="set-voice"></select>
-          </label>
-          <label>ElevenLabs voice ID (ElevenLabs engine) — blank uses the default
-            <input type="text" name="voice_el_voice_id" placeholder="onwK4e9ZLuTAKqWW03F9 (Daniel)" />
-          </label>
-          <label>Greeting (when you call in) — <code>{name}</code> becomes your name
-            <input type="text" name="voice_greeting" placeholder="Good day, {name}. Jarvis here. How can I help?" />
-          </label>
-          <label>Sign-off (when the call ends)
-            <input type="text" name="voice_signoff" placeholder="Very good. Goodbye." />
-          </label>
-          <label>End-of-speech timeout
-            <select name="voice_speech_timeout">
-              <option value="auto">Auto (Twilio decides)</option>
-              <option value="1">1 second — snappiest</option>
-              <option value="2">2 seconds</option>
-              <option value="3">3 seconds</option>
-            </select>
-          </label>
-          <label>Voice model
-            <input type="text" name="voice_model" placeholder="claude-haiku-4-5" />
-          </label>
-          <div class="settings-actions">
-            <button type="submit">Save</button>
-            <span id="settings-saved"></span>
-          </div>
-        </form>
+        <h2>How Jarvis is running</h2>
+        <div class="settings-form">
+          <p class="settings-note">
+            Jarvis runs on your Mac and uses your Claude subscription — no
+            per-message API cost. The web console and "open on my Mac" only work
+            while your Mac is awake and Jarvis is running. Telegram works from
+            anywhere.
+          </p>
+        </div>
 
         <h2>Google (Gmail &amp; Calendar)</h2>
         <div id="google-box" class="settings-form">

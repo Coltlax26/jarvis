@@ -17,23 +17,8 @@ export type JarvisUser = {
   name: string;
   password: string;
   telegramId: string | null;
-  /** Personal mobile number in E.164 (+15551234567), for SMS routing. */
-  phone: string | null;
   persona: string;
   theme: UserTheme;
-  /** Spoken line when they call in. `{name}` is replaced with their name. */
-  voiceGreeting: string | null;
-  /** Spoken line when the call ends. */
-  voiceSignoff: string | null;
-};
-
-const normPhone = (v: unknown): string | null => {
-  if (v == null) return null;
-  const digits = String(v).replace(/[^\d+]/g, "");
-  if (!digits) return null;
-  if (digits.startsWith("+")) return digits;
-  if (digits.length === 10) return `+1${digits}`;
-  return `+${digits}`;
 };
 
 function parseTheme(rec: Record<string, unknown>): UserTheme {
@@ -52,27 +37,17 @@ function parseTheme(rec: Record<string, unknown>): UserTheme {
 }
 
 export type Config = {
-  anthropicApiKey: string;
-  anthropicWorkspaceId: string | null;
+  /**
+   * Only set when the owner wants pay-per-token API billing. Left null, the
+   * Agent SDK falls back to the machine's `claude` login (Claude subscription).
+   */
+  anthropicApiKey: string | null;
   databaseUrl: string | null;
   users: JarvisUser[];
   sessionSecret: string;
   telegramBotToken: string | null;
-  twilio: {
-    accountSid: string;
-    authToken: string;
-    fromNumber: string;
-  } | null;
-  /** Twilio TTS voice for phone calls. */
-  voiceTts: string;
-  /** Main model for chat/text turns. Cheaper models cut cost sharply. */
+  /** Main model for chat/text turns. */
   model: string;
-  /** Model used for phone calls (fast; latency matters more than depth). */
-  voiceModel: string;
-  /** <Gather speechTimeout>: "auto" (Twilio decides) or seconds of silence. */
-  voiceSpeechTimeout: string;
-  /** ElevenLabs TTS (higher quality than Twilio's built-in voices). */
-  elevenLabs: { apiKey: string; voiceId: string } | null;
   /** Google OAuth (Gmail + Calendar). Inert until both halves are set. */
   google: { clientId: string; clientSecret: string } | null;
   tz: string;
@@ -114,13 +89,8 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
             : rec.telegramId != null
               ? String(rec.telegramId)
               : null,
-        phone: normPhone(rec.phone),
         persona: typeof rec.persona === "string" ? rec.persona.trim() : "",
         theme: parseTheme(rec),
-        voiceGreeting:
-          typeof rec.greeting === "string" && rec.greeting.trim() ? rec.greeting.trim() : null,
-        voiceSignoff:
-          typeof rec.signoff === "string" && rec.signoff.trim() ? rec.signoff.trim() : null,
       };
     });
     assertUniqueUsers(users);
@@ -141,10 +111,7 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
       name,
       password,
       telegramId: env.OWNER_TELEGRAM_ID?.trim() || null,
-      phone: normPhone(env.OWNER_PHONE),
       persona: env.WEB_USER_PERSONA?.trim() || "",
-      voiceGreeting: env.VOICE_GREETING?.trim() || null,
-      voiceSignoff: env.VOICE_SIGNOFF?.trim() || null,
       theme: {
         mode: "hud",
         accent: null,
@@ -181,7 +148,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     return v;
   };
 
-  const anthropicApiKey = req("ANTHROPIC_API_KEY");
   const sessionSecret = req("SESSION_SECRET");
 
   if (missing.length > 0) {
@@ -199,18 +165,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (owner && users[0] && !users[0].telegramId) {
     users[0].telegramId = owner;
   }
-  const ownerPhone = normPhone(env.OWNER_PHONE);
-  if (ownerPhone && users[0] && !users[0].phone) {
-    users[0].phone = ownerPhone;
-  }
-
-  const twilioSid = env.TWILIO_ACCOUNT_SID?.trim();
-  const twilioToken = env.TWILIO_AUTH_TOKEN?.trim();
-  const twilioFrom = normPhone(env.TWILIO_FROM_NUMBER);
-  const twilio =
-    twilioSid && twilioToken && twilioFrom
-      ? { accountSid: twilioSid, authToken: twilioToken, fromNumber: twilioFrom }
-      : null;
 
   const nodeEnvRaw = env.NODE_ENV ?? "development";
   const nodeEnv =
@@ -219,24 +173,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : "development";
 
   return {
-    anthropicApiKey,
-    anthropicWorkspaceId: env.ANTHROPIC_WORKSPACE_ID?.trim() || null,
+    anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     databaseUrl: env.DATABASE_URL?.trim() ? env.DATABASE_URL.trim() : null,
     users,
     sessionSecret,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
-    twilio,
-    voiceTts: env.VOICE_TTS?.trim() || "Google.en-GB-Chirp3-HD-Charon",
-    model: env.JARVIS_MODEL?.trim() || "claude-haiku-4-5",
-    voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
-    voiceSpeechTimeout: env.VOICE_SPEECH_TIMEOUT?.trim() || "auto",
-    elevenLabs: env.ELEVENLABS_API_KEY?.trim()
-      ? {
-          apiKey: env.ELEVENLABS_API_KEY.trim(),
-          // Default: "Daniel" — deep, authoritative British male, close to JARVIS.
-          voiceId: env.ELEVENLABS_VOICE_ID?.trim() || "onwK4e9ZLuTAKqWW03F9",
-        }
-      : null,
+    model: env.JARVIS_MODEL?.trim() || "claude-sonnet-5",
     google:
       env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim()
         ? {

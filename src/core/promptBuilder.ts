@@ -8,7 +8,6 @@ export function buildSystemPrompt(opts: {
   now: Date;
   actions: Action[];
   memories: Memory[];
-  spoken?: boolean;
 }): string {
   const who = opts.userName;
   const tierName = {
@@ -27,15 +26,10 @@ export function buildSystemPrompt(opts: {
     ? `\nYour role for ${who}: ${opts.persona.trim()}\n`
     : "";
 
-  const spokenLine = opts.spoken
-    ? "This is a live phone call. Reply the way a person speaks aloud: 1 to 3 short sentences, no lists, no markdown, no headings. If something needs detail, offer to send it to the app afterward."
-    : "";
-
   return [
     `You are Jarvis, ${who}'s personal assistant. You are talking with ${who}.`,
     "Be direct and useful. Keep prose plain and simple: short sentences, minimal punctuation, not clever-sounding.",
     personaLine,
-    spokenLine,
     `Current time: ${opts.now.toISOString()} (timezone: ${opts.tz}).`,
     "",
     `What you know about ${who}:`,
