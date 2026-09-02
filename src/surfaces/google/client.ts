@@ -243,6 +243,19 @@ export class GoogleClient {
     return toEvent(ev);
   }
 
+  async deleteEvent(userId: string, eventId: string): Promise<void> {
+    const token = await this.accessToken(userId);
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+    );
+    // 200/204 = deleted, 410 = already gone (fine).
+    if (!res.ok && res.status !== 410) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Google API ${res.status}: ${body.slice(0, 300)}`);
+    }
+  }
+
   /** Best-effort: log and swallow, used by the calendar-reminder job. */
   async safeListEvents(
     userId: string,

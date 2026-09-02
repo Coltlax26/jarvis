@@ -40,7 +40,11 @@ const fakeGoogle: GoogleActionsApi = {
     location: null,
     htmlLink: null,
   }),
+  deleteEvent: async (_u, id) => {
+    deleted.push(id);
+  },
 };
+const deleted: string[] = [];
 
 beforeEach(async () => {
   db = await makeTestDb();
@@ -50,6 +54,7 @@ beforeEach(async () => {
   gate = new ActionGate(db, reg);
   connected = true;
   created.length = 0;
+  deleted.length = 0;
 });
 afterEach(async () => {
   await db.close();
@@ -109,6 +114,17 @@ describe("google actions", () => {
     const out = await gate.attempt("list_events", {}, ctx);
     expect(out.kind).toBe("executed");
     if (out.kind === "executed") expect(out.result.message).toMatch(/Standup/);
+  });
+
+  it("delete_event is tier 1 and only deletes after approval", async () => {
+    const held = await gate.attempt("delete_event", { eventId: "e1" }, ctx);
+    expect(held.kind).toBe("held");
+    if (held.kind !== "held") return;
+    expect(held.tier).toBe(1);
+    expect(deleted).toHaveLength(0);
+    const res = await gate.approve(held.pendingId, "colt");
+    expect(res.ok).toBe(true);
+    expect(deleted).toEqual(["e1"]);
   });
 
   it("does not register google actions when no api is given", () => {

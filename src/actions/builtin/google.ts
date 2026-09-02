@@ -30,6 +30,7 @@ export type GoogleActionsApi = {
     eventId: string,
     patch: { start?: string; end?: string; summary?: string }
   ): Promise<CalendarEvent>;
+  deleteEvent(userId: string, eventId: string): Promise<void>;
 };
 
 const NOT_CONNECTED =
@@ -48,6 +49,26 @@ export function registerGoogleActions(
   reg.register(listEventsAction(api));
   reg.register(addEventAction(api));
   reg.register(moveEventAction(api));
+  reg.register(deleteEventAction(api));
+}
+
+export function deleteEventAction(
+  api: GoogleActionsApi
+): Action<{ eventId: string }> {
+  return {
+    name: "delete_event",
+    tier: 1,
+    description:
+      "Delete an event from Colt's calendar. Get its eventId from list_events " +
+      "first. Held for his approval before it is removed.",
+    schema: z.object({ eventId: z.string().min(1) }),
+    summarize: (i) => `delete calendar event ${i.eventId}`,
+    run: async (i, ctx) => {
+      if (!(await api.isConnected(ctx.userId))) return { ok: false, message: NOT_CONNECTED };
+      await api.deleteEvent(ctx.userId, i.eventId);
+      return { ok: true, message: "Deleted that event from your calendar." };
+    },
+  };
 }
 
 export function readInboxAction(api: GoogleActionsApi): Action<{ limit?: number }> {

@@ -165,8 +165,16 @@ async function main() {
   });
   scheduler.start();
 
+  const telegramById = new Map(
+    config.users.filter((u) => u.telegramId).map((u) => [u.id, true])
+  );
   const calendarJob = google
-    ? new CalendarReminderJob({ db, google, tokens: googleTokens })
+    ? new CalendarReminderJob({
+        db,
+        google,
+        tokens: googleTokens,
+        channelFor: (id) => (telegramById.has(id) ? "telegram" : "web"),
+      })
     : null;
   calendarJob?.start();
 

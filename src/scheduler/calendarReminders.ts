@@ -16,6 +16,8 @@ export class CalendarReminderJob {
       db: Db;
       google: GoogleClient;
       tokens: GoogleTokenRepo;
+      /** How to deliver the nudge for a user — "telegram" if they have it, else "web". */
+      channelFor?: (userId: string) => "telegram" | "web";
       leadMinutes?: number;
       intervalMs?: number;
     }
@@ -43,15 +45,17 @@ export class CalendarReminderJob {
           [userId, source]
         );
         if (rows.length) continue;
+        const channel = this.deps.channelFor?.(userId) ?? "web";
         await this.deps.db.query(
           `insert into scheduled_messages (id, user_id, deliver_at, body, source, channel)
-           values ($1,$2,$3,$4,$5,'web')`,
+           values ($1,$2,$3,$4,$5,$6)`,
           [
             randomUUID(),
             userId,
             deliverAt.toISOString(),
             `"${ev.summary}" starts in ${this.deps.leadMinutes ?? 15} minutes${ev.location ? ` at ${ev.location}` : ""}.`,
             source,
+            channel,
           ]
         );
         made++;

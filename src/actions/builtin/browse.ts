@@ -9,18 +9,20 @@ export type BrowseApi = {
 };
 
 /**
- * Tier 2 — Jarvis opens a real headless browser, loads a page, and reads it
- * back (JS-rendered content a plain fetch can't see). Screenshot streams to
- * the console. Requires approval every time.
+ * Tier 0 — Jarvis opens a real headless browser, loads a page, and reads its
+ * rendered text (JS-rendered content a plain fetch can't see). Read-only: it
+ * navigates and extracts text + a screenshot, never clicks, submits, or logs
+ * in. Same risk profile as WebFetch. Needed for lead-gen (checking whether a
+ * business has a real site) where approving every page would kill the workflow.
  */
 export function browseAction(api: BrowseApi): Action<{ url: string; waitMs?: number }> {
   return {
     name: "browse",
-    tier: 2,
+    tier: 0,
     description:
       "Open a web page in Jarvis's own headless browser and read its rendered " +
       "text (use for sites that need JavaScript, or to check whether a business " +
-      "has a real website). `url` is the page to load. Requires approval each time.",
+      "has a real website). `url` is the page to load. Read-only.",
     schema: z.object({
       url: z.string().min(3),
       waitMs: z.number().int().min(0).max(8000).optional(),

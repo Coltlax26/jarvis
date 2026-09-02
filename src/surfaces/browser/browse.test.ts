@@ -33,7 +33,7 @@ const okRunner: BrowserLike = {
 };
 
 describe("browse action + service", () => {
-  it("is registered as tier 2", async () => {
+  it("is registered as tier 0 (read-only page load)", async () => {
     const reg = new ActionRegistry();
     registerBuiltins(reg, {
       memory: new MemoryRepo(db),
@@ -41,9 +41,9 @@ describe("browse action + service", () => {
       browse: { run: (u, i) => new BrowseService({ runner: okRunner, publicUrl: "http://x" }).run(u, i) },
     });
     const gate = new ActionGate(db, reg);
-    const held = await gate.attempt("browse", { url: "example.com" }, ctx);
-    expect(held.kind).toBe("held");
-    if (held.kind === "held") expect(held.tier).toBe(2);
+    const out = await gate.attempt("browse", { url: "example.com" }, ctx);
+    expect(out.kind).toBe("executed");
+    if (out.kind === "executed") expect(out.result.ok).toBe(true);
   });
 
   it("returns page text + a screenshot URL and emits a console event", async () => {
