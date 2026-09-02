@@ -124,8 +124,17 @@
         <h2>Voice agent</h2>
         <p class="settings-note">Changes take effect on the next call — no restart needed.</p>
         <form id="settings-form" class="settings-form">
-          <label>TTS voice
+          <label>Voice engine
+            <select name="voice_provider">
+              <option value="twilio">Twilio (built-in, instant)</option>
+              <option value="elevenlabs">ElevenLabs (natural, needs API key)</option>
+            </select>
+          </label>
+          <label>TTS voice (Twilio engine)
             <select name="voice_tts" id="set-voice"></select>
+          </label>
+          <label>ElevenLabs voice ID (ElevenLabs engine) — blank uses the default
+            <input type="text" name="voice_el_voice_id" placeholder="onwK4e9ZLuTAKqWW03F9 (Daniel)" />
           </label>
           <label>Greeting (when you call in) — <code>{name}</code> becomes your name
             <input type="text" name="voice_greeting" placeholder="Good day, {name}. Jarvis here. How can I help?" />

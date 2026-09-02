@@ -11,6 +11,7 @@ import {
   announceTwiML,
   conversationTwiML,
 } from "../twilio/voiceClient.js";
+import type { ElevenLabsClient } from "../elevenlabs/client.js";
 
 type VoiceUser = {
   phone: string;
@@ -26,6 +27,8 @@ export type VoiceResolved = {
   greeting: string | null;
   signoff: string | null;
   speechTimeout: string;
+  provider: "twilio" | "elevenlabs";
+  elVoiceId?: string | null;
 };
 
 const isGoodbye = (s: string): boolean =>
@@ -41,10 +44,12 @@ export class VoiceSurface implements Surface {
   private byUserId: Map<string, VoiceUser>;
   private defaultVoice: string;
   private defaultSpeechTimeout: string;
+  private audioBase: string;
   private turnUrl: string;
   private incomingUrl: string;
   private announceBase: string;
-  private announcements = new Map<string, { text: string; voice: string; expires: number }>();
+  private announcements = new Map<string, { text: string; r: VoiceResolved; expires: number }>();
+  private audio = new Map<string, { mp3: Buffer; expires: number }>();
   /** Per-call scratch state, keyed by Twilio CallSid. */
   private calls = new Map<string, { userId: string; empties: number; last: number }>();
 
@@ -61,7 +66,7 @@ export class VoiceSurface implements Surface {
       gate: ActionGate;
       bus?: JarvisBus;
       activity?: ActivityRepo;
-      /** Live per-user overrides for voice/greeting/signoff/timeout. */
+      elevenLabs?: ElevenLabsClient;
       resolve?: (userId: string, base: VoiceResolved) => Promise<VoiceResolved>;
     }
   ) {
@@ -78,6 +83,7 @@ export class VoiceSurface implements Surface {
     this.incomingUrl = `${base}/twilio/voice`;
     this.turnUrl = `${base}/twilio/voice/turn`;
     this.announceBase = `${base}/twilio/voice/announce`;
+    this.audioBase = `${base}/voice/audio`;
   }
 
   private async resolved(user: VoiceUser): Promise<VoiceResolved> {
@@ -86,6 +92,8 @@ export class VoiceSurface implements Surface {
       greeting: user.greeting,
       signoff: user.signoff,
       speechTimeout: this.defaultSpeechTimeout,
+      provider: this.deps.elevenLabs ? "elevenlabs" : "twilio",
+      elVoiceId: null,
     };
     if (!this.deps.resolve) return base;
     try {
@@ -110,9 +118,11 @@ export class VoiceSurface implements Surface {
     });
   }
 
-  private sweepCalls(): void {
-    const cutoff = Date.now() - 10 * 60_000;
-    for (const [sid, c] of this.calls) if (c.last < cutoff) this.calls.delete(sid);
+  private sweep(): void {
+    const now = Date.now();
+    for (const [sid, c] of this.calls) if (c.last < now - 10 * 60_000) this.calls.delete(sid);
+    for (const [id, a] of this.audio) if (a.expires < now) this.audio.delete(id);
+    for (const [t, a] of this.announcements) if (a.expires < now) this.announcements.delete(t);
   }
 
   urls(): { incoming: string; turn: string; announce: string } {
@@ -123,8 +133,14 @@ export class VoiceSurface implements Surface {
     return this.byPhone.get(from);
   }
 
+  audioFor(id: string): Buffer | null {
+    const a = this.audio.get(id);
+    if (!a || a.expires < Date.now()) return null;
+    return a.mp3;
+  }
+
   activeCalls(): { userId: string; name: string; sinceMs: number }[] {
-    this.sweepCalls();
+    this.sweep();
     const now = Date.now();
     const out: { userId: string; name: string; sinceMs: number }[] = [];
     for (const c of this.calls.values()) {
@@ -134,18 +150,38 @@ export class VoiceSurface implements Surface {
     return out;
   }
 
-  /** conversationTwiML with a listening Gather. */
-  private convo(text: string, voice: string, speechTimeout: string): string {
+  /** Resolve a line to a <Play> URL (ElevenLabs) or leave it for <Say>. */
+  private async playUrlFor(text: string, r: VoiceResolved): Promise<string | undefined> {
+    if (r.provider !== "elevenlabs" || !this.deps.elevenLabs) return undefined;
+    try {
+      const mp3 = await this.deps.elevenLabs.synthesize(text, r.elVoiceId ?? undefined);
+      const id = randomUUID();
+      this.audio.set(id, { mp3, expires: Date.now() + 3 * 60_000 });
+      return `${this.audioBase}/${id}.mp3`;
+    } catch (err) {
+      logger.error("elevenlabs synth failed; falling back to Say", err);
+      return undefined;
+    }
+  }
+
+  private async convo(text: string, r: VoiceResolved): Promise<string> {
+    const playUrl = await this.playUrlFor(text, r);
     return conversationTwiML(text, {
-      voice,
+      voice: r.voice,
+      playUrl,
       actionUrl: this.turnUrl,
-      speechTimeout,
+      speechTimeout: r.speechTimeout,
     });
+  }
+
+  private async hangupLine(text: string, r: VoiceResolved): Promise<string> {
+    const playUrl = await this.playUrlFor(text, r);
+    return conversationTwiML(text, { voice: r.voice, playUrl });
   }
 
   /** TwiML for an inbound call. */
   async greeting(from: string, callSid: string): Promise<string> {
-    this.sweepCalls();
+    this.sweep();
     const user = this.byPhone.get(from);
     if (!user) {
       return conversationTwiML(
@@ -166,10 +202,15 @@ export class VoiceSurface implements Surface {
       kind: "call_started",
       summary: `Call from ${user.name}`,
     });
-    return this.convo(hello, r.voice, r.speechTimeout);
+    return this.convo(hello, r);
   }
 
-  private endCall(user: VoiceUser, callSid: string, line: string, voice: string): string {
+  private async endCall(
+    user: VoiceUser,
+    callSid: string,
+    line: string,
+    r: VoiceResolved
+  ): Promise<string> {
     this.calls.delete(callSid);
     this.emit(user.userId, "call_transcript", line, { speaker: "jarvis" });
     this.emit(user.userId, "call_ended", "Call ended");
@@ -178,7 +219,7 @@ export class VoiceSurface implements Surface {
       kind: "call_ended",
       summary: `Call with ${user.name} ended`,
     });
-    return conversationTwiML(line, { voice });
+    return this.hangupLine(line, r);
   }
 
   /** TwiML for a spoken turn during a call. */
@@ -202,16 +243,13 @@ export class VoiceSurface implements Surface {
     if (!text) {
       state.empties += 1;
       this.calls.set(callSid, { ...state, empties: state.empties, last: Date.now() });
-      if (state.empties === 1) {
-        return this.convo("Are you still there?", r.voice, r.speechTimeout);
-      }
-      return this.endCall(user, callSid, signoff, r.voice);
+      if (state.empties === 1) return this.convo("Are you still there?", r);
+      return this.endCall(user, callSid, signoff, r);
     }
     state.empties = 0;
     this.emit(user.userId, "call_transcript", text, { speaker: "caller" });
-    if (isGoodbye(text)) {
-      return this.endCall(user, callSid, signoff, r.voice);
-    }
+    if (isGoodbye(text)) return this.endCall(user, callSid, signoff, r);
+
     try {
       const cmd = parseCommand(text);
       let reply: string;
@@ -235,14 +273,10 @@ export class VoiceSurface implements Surface {
         reply = out.text;
       }
       this.emit(user.userId, "call_transcript", reply, { speaker: "jarvis" });
-      return this.convo(reply, r.voice, r.speechTimeout);
+      return this.convo(reply, r);
     } catch (err) {
       logger.error("voice turn failed", err);
-      return this.convo(
-        "Something went wrong on my end. Try again in a moment.",
-        r.voice,
-        r.speechTimeout
-      );
+      return this.convo("Something went wrong on my end. Try again in a moment.", r);
     }
   }
 
@@ -264,23 +298,24 @@ export class VoiceSurface implements Surface {
   }
 
   /** TwiML for an outbound announcement call — token was minted in send(). */
-  announcementFor(token: string): string {
-    const now = Date.now();
+  async announcementFor(token: string): Promise<string> {
+    this.sweep();
     const entry = this.announcements.get(token);
     this.announcements.delete(token);
-    for (const [k, v] of this.announcements) if (v.expires < now) this.announcements.delete(k);
-    if (entry && entry.expires >= now) {
-      return announceTwiML(entry.text, { voice: entry.voice });
+    if (!entry || entry.expires < Date.now()) {
+      return announceTwiML("Jarvis calling. That reminder has expired. Goodbye.", {
+        voice: this.defaultVoice,
+      });
     }
-    return announceTwiML("Jarvis calling. That reminder has expired. Goodbye.", {
-      voice: this.defaultVoice,
-    });
+    const playUrl = await this.playUrlFor(entry.text, entry.r);
+    return announceTwiML(entry.text, { voice: entry.r.voice, playUrl });
   }
 
   async start(): Promise<void> {
     logger.info("voice surface ready", {
       from: this.deps.fromNumber,
       users: this.byPhone.size,
+      elevenlabs: Boolean(this.deps.elevenLabs),
     });
   }
   async stop(): Promise<void> {}
@@ -293,7 +328,7 @@ export class VoiceSurface implements Surface {
     const token = randomUUID();
     this.announcements.set(token, {
       text: `${user.name}, this is Jarvis. ${text.slice(0, 600)}`,
-      voice: r.voice,
+      r,
       expires: Date.now() + 5 * 60_000,
     });
     await this.client.placeCall(user.phone, `${this.announceBase}?t=${token}`);

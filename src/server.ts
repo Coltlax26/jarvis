@@ -18,6 +18,8 @@ import { WebSurface } from "./surfaces/web/index.js";
 import { TelegramSurface } from "./surfaces/telegram/index.js";
 import { TwilioSurface } from "./surfaces/twilio/index.js";
 import { VoiceSurface } from "./surfaces/voice/index.js";
+import type { VoiceResolved } from "./surfaces/voice/index.js";
+import { ElevenLabsClient } from "./surfaces/elevenlabs/client.js";
 import { Scheduler } from "./scheduler/index.js";
 
 async function main() {
@@ -41,17 +43,32 @@ async function main() {
   const settings = new SettingsRepo(db);
   const bus = new JarvisBus();
 
+  const elevenLabs = config.elevenLabs
+    ? new ElevenLabsClient({
+        apiKey: config.elevenLabs.apiKey,
+        voiceId: config.elevenLabs.voiceId,
+      })
+    : undefined;
+
   // Live per-user voice overrides: console setting, else env/JARVIS_USERS default.
   const resolveVoice = async (
     userId: string,
-    base: { voice: string; greeting: string | null; signoff: string | null; speechTimeout: string }
-  ) => {
+    base: VoiceResolved
+  ): Promise<VoiceResolved> => {
     const all = await settings.all(userId);
+    const provider =
+      all.voice_provider?.trim() === "elevenlabs" && elevenLabs
+        ? "elevenlabs"
+        : all.voice_provider?.trim() === "twilio"
+          ? "twilio"
+          : base.provider;
     return {
       voice: all.voice_tts?.trim() || base.voice,
       greeting: all.voice_greeting?.trim() || base.greeting,
       signoff: all.voice_signoff?.trim() || base.signoff,
       speechTimeout: all.voice_speech_timeout?.trim() || base.speechTimeout,
+      provider,
+      elVoiceId: all.voice_el_voice_id?.trim() || base.elVoiceId || null,
     };
   };
 
@@ -116,6 +133,7 @@ async function main() {
       gate,
       bus,
       activity,
+      elevenLabs,
       resolve: resolveVoice,
     });
     surfaces.add(voice);
@@ -144,7 +162,8 @@ async function main() {
         voice_signoff: "",
         voice_speech_timeout: config.voiceSpeechTimeout,
         voice_model: config.voiceModel,
-        voice_provider: config.twilio ? "twilio" : "",
+        voice_provider: config.elevenLabs ? "elevenlabs" : config.twilio ? "twilio" : "",
+        voice_el_voice_id: "",
       },
       bus,
       db,
@@ -167,6 +186,7 @@ async function main() {
             turn: (from, speech, sid) => voice!.turn(from, speech, sid),
             callStatus: (sid, status) => voice!.callStatus(sid, status),
             announcementFor: (token) => voice!.announcementFor(token),
+            audioFor: (id) => voice!.audioFor(id),
             activeCalls: () => voice!.activeCalls(),
           }
         : undefined,

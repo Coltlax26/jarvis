@@ -197,17 +197,19 @@ describe("WebSurface", () => {
   it("returns settings with defaults, then persists an override", async () => {
     const login = await call("POST", "/login", { body: { password: "hunter2" } });
     const before = await call("GET", "/api/settings", { cookie: login.cookie });
-    expect(before.body.settings.voice_tts.value).toBe("Google.en-GB-Chirp3-HD-Charon");
-    expect(before.body.settings.voice_tts.overridden).toBe(false);
+    const beforeS = before.body.settings as Record<string, { value: string; overridden: boolean } | undefined>;
+    expect(beforeS.voice_tts!.value).toBe("Google.en-GB-Chirp3-HD-Charon");
+    expect(beforeS.voice_tts!.overridden).toBe(false);
 
     await call("PUT", "/api/settings", {
       cookie: login.cookie,
       body: { voice_tts: "Polly.Arthur-Neural", voice_greeting: "Hello sir." },
     });
     const after = await call("GET", "/api/settings", { cookie: login.cookie });
-    expect(after.body.settings.voice_tts.value).toBe("Polly.Arthur-Neural");
-    expect(after.body.settings.voice_tts.overridden).toBe(true);
-    expect(after.body.settings.voice_greeting.value).toBe("Hello sir.");
+    const afterS = after.body.settings as Record<string, { value: string; overridden: boolean } | undefined>;
+    expect(afterS.voice_tts!.value).toBe("Polly.Arthur-Neural");
+    expect(afterS.voice_tts!.overridden).toBe(true);
+    expect(afterS.voice_greeting!.value).toBe("Hello sir.");
   });
 
   it("greets the user by name on login", async () => {

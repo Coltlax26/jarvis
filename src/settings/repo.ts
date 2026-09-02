@@ -53,5 +53,6 @@ export const SETTING_KEYS = [
   "voice_speech_timeout",
   "voice_model",
   "voice_provider",
+  "voice_el_voice_id",
 ] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
