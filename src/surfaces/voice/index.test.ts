@@ -55,17 +55,17 @@ afterEach(async () => {
 });
 
 describe("VoiceSurface", () => {
-  it("greets a known caller by name and opens a Gather", () => {
-    const twiml = voice.greeting("+15551234567", "CA1");
+  it("greets a known caller by name and opens a Gather", async () => {
+    const twiml = await voice.greeting("+15551234567", "CA1");
     expect(twiml).toContain("Good day, Colt");
     expect(twiml).toContain("<Gather");
     expect(twiml).toContain("Polly.Brian-Neural");
     expect(twiml).toContain("https://jarvis.example.com/twilio/voice/turn");
   });
 
-  it("does not greet an unknown caller by name", () => {
-    expect(voice.greeting("+19998887777", "CA9")).toContain("recognise this number");
-    expect(voice.greeting("+19998887777", "CA9")).not.toContain("Colt");
+  it("does not greet an unknown caller by name", async () => {
+    expect(await voice.greeting("+19998887777", "CA9")).toContain("recognise this number");
+    expect(await voice.greeting("+19998887777", "CA9")).not.toContain("Colt");
   });
 
   it("runs a spoken turn through the brain and speaks the reply", async () => {
@@ -86,7 +86,7 @@ describe("VoiceSurface", () => {
   });
 
   it("streams call events to the bus for the live console", async () => {
-    voice.greeting("+15551234567", "CA1");
+    await voice.greeting("+15551234567", "CA1");
     await voice.turn("+15551234567", "what's the weather", "CA1");
     await voice.turn("+15551234567", "okay goodbye", "CA1");
     const kinds = events.map((e) => e.kind);

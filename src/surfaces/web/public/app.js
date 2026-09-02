@@ -5,7 +5,7 @@ let inApp = false;
 
 const api = async (url, opts = {}) => {
   const r = await fetch(url, {
-    method: opts.body ? "POST" : "GET",
+    method: opts.method || (opts.body ? "POST" : "GET"),
     headers: opts.body ? { "content-type": "application/json" } : undefined,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
@@ -115,6 +115,7 @@ async function enterApp(name, theme) {
   connectStream();
   refreshOverview();
   refreshVoice();
+  loadSettings();
   setInterval(refreshOverview, 8000);
   setInterval(refreshVoice, 10000);
   setTimeout(() => loginScreen.remove(), 500);
@@ -457,6 +458,59 @@ function buildBrief(t) {
   if (t.pendingCount) parts.push(`${t.pendingCount} thing${t.pendingCount > 1 ? "s" : ""} need${t.pendingCount > 1 ? "" : "s"} your approval`);
   if (!parts.length) return "Nothing scheduled today. Ask me anything.";
   return "Today: " + parts.join(" · ") + ".";
+}
+
+/* ---------------- settings ---------------- */
+const VOICE_OPTIONS = [
+  ["Google.en-GB-Chirp3-HD-Charon", "British male — natural (default)"],
+  ["Google.en-GB-Chirp3-HD-Fenrir", "British male — natural, deeper"],
+  ["Google.en-GB-Chirp3-HD-Puck", "British male — natural, lighter"],
+  ["Google.en-GB-Chirp3-HD-Aoede", "British female — natural"],
+  ["Google.en-US-Chirp3-HD-Charon", "US male — natural"],
+  ["Polly.Arthur-Neural", "British male — neural"],
+  ["Polly.Brian-Neural", "British male — neural (older)"],
+  ["Polly.Amy-Generative", "British female — generative"],
+  ["Polly.Matthew-Generative", "US male — generative"],
+  ["Polly.Stephen-Generative", "US male — generative, warm"],
+];
+async function loadSettings() {
+  const sel = $("set-voice");
+  if (sel && !sel.options.length) {
+    for (const [v, label] of VOICE_OPTIONS) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+  }
+  const { ok, data } = await api("/api/settings");
+  if (!ok) return;
+  const form = $("settings-form");
+  for (const key of data.keys) {
+    const field = form.elements[key];
+    if (!field) continue;
+    const v = data.settings[key].value;
+    if (field.tagName === "SELECT" && !Array.from(field.options).some((o) => o.value === v)) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v + " (custom)";
+      field.appendChild(o);
+    }
+    field.value = v;
+  }
+}
+const settingsForm = $("settings-form");
+if (settingsForm) {
+  settingsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {};
+    for (const el of settingsForm.elements) {
+      if (el.name) body[el.name] = el.value;
+    }
+    const { ok } = await api("/api/settings", { method: "PUT", body });
+    $("settings-saved").textContent = ok ? "✓ Saved" : "Error saving";
+    setTimeout(() => ($("settings-saved").textContent = ""), 2500);
+  });
 }
 
 function pendingCard(p) {

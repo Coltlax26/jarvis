@@ -5,6 +5,7 @@ import { createDb } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { MemoryRepo } from "./memory/repo.js";
 import { ActivityRepo } from "./activity/repo.js";
+import { SettingsRepo } from "./settings/repo.js";
 import { ActionRegistry } from "./actions/registry.js";
 import { ActionGate } from "./actions/gate.js";
 import { registerBuiltins } from "./actions/builtin/index.js";
@@ -37,7 +38,22 @@ async function main() {
   logger.info("users ready", { users: config.users.map((u) => u.name) });
 
   const activity = new ActivityRepo(db);
+  const settings = new SettingsRepo(db);
   const bus = new JarvisBus();
+
+  // Live per-user voice overrides: console setting, else env/JARVIS_USERS default.
+  const resolveVoice = async (
+    userId: string,
+    base: { voice: string; greeting: string | null; signoff: string | null; speechTimeout: string }
+  ) => {
+    const all = await settings.all(userId);
+    return {
+      voice: all.voice_tts?.trim() || base.voice,
+      greeting: all.voice_greeting?.trim() || base.greeting,
+      signoff: all.voice_signoff?.trim() || base.signoff,
+      speechTimeout: all.voice_speech_timeout?.trim() || base.speechTimeout,
+    };
+  };
 
   const registry = new ActionRegistry();
   registerBuiltins(registry, { memory, db });
@@ -100,6 +116,7 @@ async function main() {
       gate,
       bus,
       activity,
+      resolve: resolveVoice,
     });
     surfaces.add(voice);
   } else {
@@ -120,6 +137,15 @@ async function main() {
       gate,
       memory,
       activity,
+      settings,
+      settingDefaults: {
+        voice_tts: config.voiceTts,
+        voice_greeting: "",
+        voice_signoff: "",
+        voice_speech_timeout: config.voiceSpeechTimeout,
+        voice_model: config.voiceModel,
+        voice_provider: config.twilio ? "twilio" : "",
+      },
       bus,
       db,
       sms: twilio

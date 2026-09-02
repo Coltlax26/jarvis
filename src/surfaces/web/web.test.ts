@@ -26,6 +26,8 @@ beforeEach(async () => {
   registerBuiltins(registry, { memory, db });
   const gate = new ActionGate(db, registry);
   const activity = new ActivityRepo(db);
+  const { SettingsRepo } = await import("../../settings/repo.js");
+  const settings = new SettingsRepo(db);
   const bus = new JarvisBus();
   const cfg: Pick<Config, "tz" | "workspaceDir"> = {
     tz: "America/Denver",
@@ -58,6 +60,12 @@ beforeEach(async () => {
     gate,
     memory,
     activity,
+    settings,
+    settingDefaults: {
+      voice_tts: "Google.en-GB-Chirp3-HD-Charon",
+      voice_speech_timeout: "auto",
+      voice_model: "claude-haiku-4-5",
+    },
     bus,
     db,
     publicUrl: "http://localhost",
@@ -184,6 +192,22 @@ describe("WebSurface", () => {
     const res = await call("POST", "/twilio/sms", { form: "From=%2B15551234567&Body=hey" });
     expect(res.status).toBe(403);
     expect(smsInbound).toEqual([]);
+  });
+
+  it("returns settings with defaults, then persists an override", async () => {
+    const login = await call("POST", "/login", { body: { password: "hunter2" } });
+    const before = await call("GET", "/api/settings", { cookie: login.cookie });
+    expect(before.body.settings.voice_tts.value).toBe("Google.en-GB-Chirp3-HD-Charon");
+    expect(before.body.settings.voice_tts.overridden).toBe(false);
+
+    await call("PUT", "/api/settings", {
+      cookie: login.cookie,
+      body: { voice_tts: "Polly.Arthur-Neural", voice_greeting: "Hello sir." },
+    });
+    const after = await call("GET", "/api/settings", { cookie: login.cookie });
+    expect(after.body.settings.voice_tts.value).toBe("Polly.Arthur-Neural");
+    expect(after.body.settings.voice_tts.overridden).toBe(true);
+    expect(after.body.settings.voice_greeting.value).toBe("Hello sir.");
   });
 
   it("greets the user by name on login", async () => {

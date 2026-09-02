@@ -10,6 +10,7 @@ import type { Brain } from "../../core/brain.js";
 import type { ActionGate } from "../../actions/gate.js";
 import type { MemoryRepo } from "../../memory/repo.js";
 import type { ActivityRepo } from "../../activity/repo.js";
+import { SETTING_KEYS, type SettingsRepo } from "../../settings/repo.js";
 import type { JarvisBus } from "../../core/events.js";
 import type { Db } from "../../db/index.js";
 import type { Surface } from "../types.js";
@@ -29,7 +30,7 @@ export type VoiceHook = {
   announceUrl: string;
   statusUrl: string;
   verify(signature: string | undefined, url: string, params: Record<string, string>): boolean;
-  greeting(from: string, callSid: string): string;
+  greeting(from: string, callSid: string): Promise<string>;
   turn(from: string, speech: string, callSid: string): Promise<string>;
   callStatus(callSid: string, status: string): void;
   announcementFor(token: string): string;
@@ -46,8 +47,11 @@ type Deps = {
   gate: ActionGate;
   memory: MemoryRepo;
   activity: ActivityRepo;
+  settings: SettingsRepo;
   bus: JarvisBus;
   db: Db;
+  /** Env-var defaults, shown in the Settings tab when nothing is overridden. */
+  settingDefaults: Record<string, string>;
   sms?: SmsHook;
   voice?: VoiceHook;
 };
@@ -227,6 +231,32 @@ export function createApp(deps: Deps): Express {
     });
   });
 
+  app.get("/api/settings", requireAuth, async (req, res) => {
+    const userId = uid(req);
+    const stored = await deps.settings.all(userId);
+    const out: Record<string, { value: string; default: string; overridden: boolean }> = {};
+    for (const key of SETTING_KEYS) {
+      const def = deps.settingDefaults[key] ?? "";
+      out[key] = {
+        value: stored[key] ?? def,
+        default: def,
+        overridden: key in stored,
+      };
+    }
+    res.json({ settings: out, keys: SETTING_KEYS });
+  });
+
+  app.put("/api/settings", requireAuth, async (req, res) => {
+    const userId = uid(req);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const updates: Record<string, string> = {};
+    for (const key of SETTING_KEYS) {
+      if (key in body) updates[key] = String(body[key] ?? "");
+    }
+    await deps.settings.setMany(userId, updates);
+    res.json({ ok: true });
+  });
+
   app.get("/api/voice", requireAuth, async (req, res) => {
     const userId = uid(req);
     const active = (deps.voice?.activeCalls() ?? []).filter((c) => c.userId === userId);
@@ -267,13 +297,24 @@ export function createApp(deps: Deps): Express {
     const xml = (res: Response, doc: string) =>
       res.set("Content-Type", "text/xml").send(doc);
 
-    app.post("/twilio/voice", form, (req, res) => {
+    app.post("/twilio/voice", form, async (req, res) => {
       const params = (req.body ?? {}) as Record<string, string>;
       if (!voice.verify(req.header("X-Twilio-Signature"), voice.incomingUrl, params)) {
         logger.warn("rejected twilio voice webhook: bad signature");
         return res.status(403).send("bad signature");
       }
-      xml(res, voice.greeting(String(params.From ?? ""), String(params.CallSid ?? "")));
+      try {
+        xml(
+          res,
+          await voice.greeting(String(params.From ?? ""), String(params.CallSid ?? ""))
+        );
+      } catch (err) {
+        logger.error("voice greeting failed", err);
+        xml(
+          res,
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Jarvis is briefly unavailable. Please call back.</Say><Hangup/></Response>'
+        );
+      }
     });
 
     app.post("/twilio/voice/turn", form, async (req, res) => {

@@ -250,6 +250,21 @@ h2:first-child { margin-top: 4px; }
 #voice-transcript .line.jarvis { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
 #badge-voice { background: var(--ok); color: #04170f; }
 
+/* ---------------- settings ---------------- */
+.settings-note { color: var(--ink-faint); font: 400 12px var(--mono); margin: 0 0 16px; }
+.settings-form { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+.settings-form label { display: flex; flex-direction: column; gap: 6px; font: 500 11px var(--hud); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.settings-form code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-family: var(--mono); text-transform: none; letter-spacing: 0; }
+.settings-form input, .settings-form select {
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: var(--radius);
+  color: var(--ink); font: 400 13px var(--sans); padding: 10px 12px;
+}
+.settings-form input:focus, .settings-form select:focus { outline: none; border-color: var(--accent); }
+.settings-actions { display: flex; align-items: center; gap: 12px; }
+.settings-actions button { background: var(--accent); color: #04121b; border: 0; border-radius: var(--radius); font: 700 12px var(--hud); letter-spacing: 0.14em; text-transform: uppercase; padding: 10px 22px; }
+:root[data-theme="light"] .settings-actions button { color: #fff; }
+#settings-saved { color: var(--ok); font: 500 12px var(--mono); }
+
 /* ---------------- chat ---------------- */
 #view-chat { display: flex; flex-direction: column; height: calc(100vh - 58px - 40px); }
 #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; padding: 4px 2px 16px; }

@@ -24,6 +24,7 @@ describe("migrations", () => {
         "scheduled_messages",
         "schema_migrations",
         "session",
+        "settings",
         "users",
       ])
     );

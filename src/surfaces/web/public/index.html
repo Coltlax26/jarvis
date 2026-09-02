@@ -46,6 +46,7 @@
         <button class="tab" data-view="voice">Voice <span class="badge" id="badge-voice"></span></button>
         <button class="tab" data-view="memory">Memory</button>
         <button class="tab" data-view="activity">Activity</button>
+        <button class="tab" data-view="settings">Settings</button>
       </nav>
       <div class="hud-clock">
         <div class="t" id="clock-time">--:--</div>
@@ -117,6 +118,37 @@
       <section class="view" id="view-activity" hidden>
         <h2>Live activity</h2>
         <div class="feed" id="feed"></div>
+      </section>
+
+      <section class="view" id="view-settings" hidden>
+        <h2>Voice agent</h2>
+        <p class="settings-note">Changes take effect on the next call — no restart needed.</p>
+        <form id="settings-form" class="settings-form">
+          <label>TTS voice
+            <select name="voice_tts" id="set-voice"></select>
+          </label>
+          <label>Greeting (when you call in) — <code>{name}</code> becomes your name
+            <input type="text" name="voice_greeting" placeholder="Good day, {name}. Jarvis here. How can I help?" />
+          </label>
+          <label>Sign-off (when the call ends)
+            <input type="text" name="voice_signoff" placeholder="Very good. Goodbye." />
+          </label>
+          <label>End-of-speech timeout
+            <select name="voice_speech_timeout">
+              <option value="auto">Auto (Twilio decides)</option>
+              <option value="1">1 second — snappiest</option>
+              <option value="2">2 seconds</option>
+              <option value="3">3 seconds</option>
+            </select>
+          </label>
+          <label>Voice model
+            <input type="text" name="voice_model" placeholder="claude-haiku-4-5" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit">Save</button>
+            <span id="settings-saved"></span>
+          </div>
+        </form>
       </section>
     </main>
   </div>
