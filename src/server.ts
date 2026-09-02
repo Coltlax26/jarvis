@@ -29,6 +29,12 @@ import { Scheduler } from "./scheduler/index.js";
 import { CalendarReminderJob } from "./scheduler/calendarReminders.js";
 
 async function main() {
+  // A stray rejection (e.g. a background polling loop) must be logged, not
+  // allowed to take the whole service down.
+  process.on("unhandledRejection", (reason) => {
+    logger.error("unhandled rejection", reason);
+  });
+
   const config = loadConfig();
   await mkdir(config.workspaceDir, { recursive: true });
 

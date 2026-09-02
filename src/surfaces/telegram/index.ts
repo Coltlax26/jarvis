@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, GrammyError } from "grammy";
 import { logger } from "../../logger.js";
 import type { Brain } from "../../core/brain.js";
 import type { ActionGate } from "../../actions/gate.js";
@@ -19,6 +19,8 @@ export class TelegramSurface implements Surface {
     this.byTelegramId = new Map(deps.users.map((u) => [u.telegramId, u.userId]));
     this.byUserId = new Map(deps.users.map((u) => [u.userId, u.telegramId]));
     this.bot = new Bot(deps.token);
+    // A handler error must never bubble out of the polling loop and crash us.
+    this.bot.catch((err) => logger.error("telegram bot error", err.error));
     this.bot.on("message:text", async (ctx) => {
       const userId = this.byTelegramId.get(String(ctx.chat.id));
       if (!userId) {
@@ -59,11 +61,39 @@ export class TelegramSurface implements Surface {
     });
   }
 
+  private stopping = false;
+
   async start(): Promise<void> {
-    // start() resolves when polling stops; run it detached.
-    void this.bot.start({ onStart: () => logger.info("telegram polling started") });
+    // start() resolves only when polling stops; run it detached and keep it
+    // alive across transient polling failures. The most common one is a 409
+    // during a rolling deploy, when the previous instance still holds the
+    // long-poll for a few seconds — retry rather than crash the process.
+    void this.runPolling();
   }
+
+  private async runPolling(attempt = 0): Promise<void> {
+    if (this.stopping) return;
+    try {
+      await this.bot.start({
+        onStart: () => logger.info("telegram polling started"),
+      });
+    } catch (err) {
+      if (this.stopping) return;
+      const is409 = err instanceof GrammyError && err.error_code === 409;
+      const delayMs = Math.min(30_000, 3_000 * 2 ** attempt);
+      logger.warn("telegram polling stopped; retrying", {
+        conflict: is409,
+        attempt,
+        delayMs,
+        err: (err as Error).message,
+      });
+      await new Promise((r) => setTimeout(r, delayMs));
+      void this.runPolling(attempt + 1);
+    }
+  }
+
   async stop(): Promise<void> {
+    this.stopping = true;
     await this.bot.stop();
   }
   async send(userId: string, text: string): Promise<void> {
