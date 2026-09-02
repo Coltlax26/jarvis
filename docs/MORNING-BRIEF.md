@@ -131,6 +131,17 @@ https://web-production-a733d.up.railway.app/health.
 6. **(Optional) Obsidian integration** — you asked about this; parked as a
    future phase, see the Roadmap section.
 
+## Keeping API cost down
+
+Jarvis now runs on **Claude Haiku** for everything (env var `JARVIS_MODEL`,
+default `claude-haiku-4-5`) — about 5x cheaper per use than the Opus model it
+started on. Used normally (texts, calls, a handful of questions a day) this is a
+couple dollars a month at most. There is no free tier for the Claude API — every
+model bills per use — but you can cap it: **console.anthropic.com → Billing →
+Limits** lets you set a hard monthly spend ceiling. If you ever want it smarter
+for a heavy task, set `JARVIS_MODEL=claude-sonnet-5` (or `claude-opus-5`) in
+Railway and redeploy.
+
 ## Roadmap — parked ideas
 
 ### Obsidian integration (future phase)
