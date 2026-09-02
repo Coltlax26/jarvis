@@ -14,6 +14,8 @@ export type TwiMLOptions = {
   voice: string;
   /** Absolute URL Twilio should POST the caller's speech to. */
   actionUrl?: string;
+  /** <Gather speechTimeout>: "auto" or a number of seconds. Default "auto". */
+  speechTimeout?: string;
 };
 
 /** Build a TwiML document that speaks `text` then optionally listens for a reply. */
@@ -24,9 +26,10 @@ export function conversationTwiML(text: string, opts: TwiMLOptions): string {
   }
   // actionOnEmptyResult keeps the webhook firing even on silence, so the server
   // always knows the state of the call and can end it deliberately.
+  const st = esc(opts.speechTimeout || "auto");
   const gather =
     `<Gather input="speech" language="en-US" speechModel="phone_call" ` +
-    `speechTimeout="auto" actionOnEmptyResult="true" ` +
+    `speechTimeout="${st}" actionOnEmptyResult="true" ` +
     `action="${esc(opts.actionUrl)}" method="POST"/>`;
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}${gather}</Response>`;
 }

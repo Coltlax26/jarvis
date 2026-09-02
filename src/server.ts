@@ -11,6 +11,7 @@ import { registerBuiltins } from "./actions/builtin/index.js";
 import { Brain } from "./core/brain.js";
 import { JarvisBus } from "./core/events.js";
 import { SdkRunner } from "./core/sdkRunner.js";
+import { DirectRunner } from "./core/directRunner.js";
 import { SurfaceRegistry } from "./surfaces/registry.js";
 import { WebSurface } from "./surfaces/web/index.js";
 import { TelegramSurface } from "./surfaces/telegram/index.js";
@@ -48,10 +49,11 @@ async function main() {
     workspaceDir: config.workspaceDir,
     anthropicWorkspaceId: config.anthropicWorkspaceId,
   });
-  const voiceRunner = new SdkRunner({
+  // Voice turns use a direct Messages API call (no agent subprocess) so replies
+  // come back in ~1-3s instead of ~5-8s.
+  const voiceRunner = new DirectRunner({
     model: config.voiceModel,
     apiKey: config.anthropicApiKey,
-    workspaceDir: config.workspaceDir,
     anthropicWorkspaceId: config.anthropicWorkspaceId,
     timeoutMs: 25_000,
   });
@@ -85,6 +87,7 @@ async function main() {
     voice = new VoiceSurface({
       ...config.twilio,
       voice: config.voiceTts,
+      speechTimeout: config.voiceSpeechTimeout,
       publicUrl: config.publicUrl,
       users: phoneUsers.map((u) => ({
         phone: u.phone!,

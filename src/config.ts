@@ -67,6 +67,8 @@ export type Config = {
   voiceTts: string;
   /** Model used for phone calls (fast; latency matters more than depth). */
   voiceModel: string;
+  /** <Gather speechTimeout>: "auto" (Twilio decides) or seconds of silence. */
+  voiceSpeechTimeout: string;
   tz: string;
   workspaceDir: string;
   publicUrl: string;
@@ -220,6 +222,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     twilio,
     voiceTts: env.VOICE_TTS?.trim() || "Google.en-GB-Chirp3-HD-Charon",
     voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
+    voiceSpeechTimeout: env.VOICE_SPEECH_TIMEOUT?.trim() || "auto",
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",
     publicUrl: env.PUBLIC_URL?.trim() || "http://localhost:3000",

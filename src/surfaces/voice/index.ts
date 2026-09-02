@@ -32,6 +32,7 @@ export class VoiceSurface implements Surface {
   private byPhone: Map<string, VoiceUser>;
   private byUserId: Map<string, VoiceUser>;
   private voice: string;
+  private speechTimeout: string;
   private turnUrl: string;
   private incomingUrl: string;
   private announceBase: string;
@@ -45,6 +46,7 @@ export class VoiceSurface implements Surface {
       authToken: string;
       fromNumber: string;
       voice: string;
+      speechTimeout?: string;
       publicUrl: string;
       users: VoiceUser[];
       brain: Brain;
@@ -61,6 +63,7 @@ export class VoiceSurface implements Surface {
     this.byPhone = new Map(deps.users.map((u) => [u.phone, u]));
     this.byUserId = new Map(deps.users.map((u) => [u.userId, u]));
     this.voice = deps.voice;
+    this.speechTimeout = deps.speechTimeout || "auto";
     const base = deps.publicUrl.replace(/\/$/, "");
     this.incomingUrl = `${base}/twilio/voice`;
     this.turnUrl = `${base}/twilio/voice/turn`;
@@ -128,7 +131,16 @@ export class VoiceSurface implements Surface {
       kind: "call_started",
       summary: `Call from ${user.name}`,
     });
-    return conversationTwiML(hello, { voice: this.voice, actionUrl: this.turnUrl });
+    return this.convo(hello);
+  }
+
+  /** conversationTwiML with a listening Gather, using this surface's voice + timeout. */
+  private convo(text: string): string {
+    return conversationTwiML(text, {
+      voice: this.voice,
+      actionUrl: this.turnUrl,
+      speechTimeout: this.speechTimeout,
+    });
   }
 
   private endCall(user: VoiceUser, callSid: string, line: string): string {
@@ -164,10 +176,7 @@ export class VoiceSurface implements Surface {
       state.empties += 1;
       this.calls.set(callSid, { ...state, empties: state.empties, last: Date.now() });
       if (state.empties === 1) {
-        return conversationTwiML("Are you still there?", {
-          voice: this.voice,
-          actionUrl: this.turnUrl,
-        });
+        return this.convo("Are you still there?");
       }
       return this.endCall(user, callSid, signoff);
     }
@@ -199,13 +208,10 @@ export class VoiceSurface implements Surface {
         reply = out.text;
       }
       this.emit(user.userId, "call_transcript", reply, { speaker: "jarvis" });
-      return conversationTwiML(reply, { voice: this.voice, actionUrl: this.turnUrl });
+      return this.convo(reply);
     } catch (err) {
       logger.error("voice turn failed", err);
-      return conversationTwiML(
-        "Something went wrong on my end. Try again in a moment.",
-        { voice: this.voice, actionUrl: this.turnUrl }
-      );
+      return this.convo("Something went wrong on my end. Try again in a moment.");
     }
   }
 
