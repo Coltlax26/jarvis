@@ -71,6 +71,8 @@ export type Config = {
   voiceSpeechTimeout: string;
   /** ElevenLabs TTS (higher quality than Twilio's built-in voices). */
   elevenLabs: { apiKey: string; voiceId: string } | null;
+  /** Google OAuth (Gmail + Calendar). Inert until both halves are set. */
+  google: { clientId: string; clientSecret: string } | null;
   tz: string;
   workspaceDir: string;
   publicUrl: string;
@@ -232,6 +234,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           voiceId: env.ELEVENLABS_VOICE_ID?.trim() || "onwK4e9ZLuTAKqWW03F9",
         }
       : null,
+    google:
+      env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim()
+        ? {
+            clientId: env.GOOGLE_CLIENT_ID.trim(),
+            clientSecret: env.GOOGLE_CLIENT_SECRET.trim(),
+          }
+        : null,
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",
     publicUrl: env.PUBLIC_URL?.trim() || "http://localhost:3000",

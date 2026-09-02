@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
@@ -75,9 +76,17 @@ type Deps = {
   settingDefaults: Record<string, string>;
   sms?: SmsHook;
   voice?: VoiceHook;
+  google?: GoogleHook;
 };
 
-type SessionShape = { userId?: string };
+export type GoogleHook = {
+  authUrl(state: string): string;
+  connect(userId: string, code: string): Promise<void>;
+  isConnected(userId: string): Promise<boolean>;
+  disconnect(userId: string): Promise<void>;
+};
+
+type SessionShape = { userId?: string; googleState?: string };
 
 export function createApp(deps: Deps): Express {
   const app = express();
@@ -287,6 +296,43 @@ export function createApp(deps: Deps): Express {
     const outbound = (await deps.voice?.outbound?.history(userId)) ?? [];
     res.json({ enabled: Boolean(deps.voice), active, calls, outbound });
   });
+
+  // Google (Gmail + Calendar) connect flow.
+  if (deps.google) {
+    const g = deps.google;
+    app.get("/api/google", requireAuth, async (req, res) => {
+      res.json({ available: true, connected: await g.isConnected(uid(req)) });
+    });
+    app.get("/auth/google", requireAuth, (req, res) => {
+      const state = randomUUID();
+      (req.session as SessionShape).googleState = state;
+      res.redirect(g.authUrl(state));
+    });
+    app.get("/auth/google/callback", requireAuth, async (req, res) => {
+      const sess = req.session as SessionShape;
+      const code = String(req.query.code ?? "");
+      const state = String(req.query.state ?? "");
+      if (!code || !state || state !== sess.googleState) {
+        return res.redirect("/?google=error");
+      }
+      delete sess.googleState;
+      try {
+        await g.connect(uid(req), code);
+        res.redirect("/?google=connected");
+      } catch (err) {
+        logger.error("google connect failed", err);
+        res.redirect("/?google=error");
+      }
+    });
+    app.post("/api/google/disconnect", requireAuth, async (req, res) => {
+      await g.disconnect(uid(req));
+      res.json({ ok: true });
+    });
+  } else {
+    app.get("/api/google", requireAuth, (_req, res) =>
+      res.json({ available: false, connected: false })
+    );
+  }
 
   // Twilio inbound SMS webhook (form-encoded, no session).
   if (deps.sms) {

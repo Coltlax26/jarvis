@@ -6,14 +6,21 @@ import { setReminderAction } from "./setReminder.js";
 import { sendTestMessageAction } from "./sendTestMessage.js";
 import { spendTestAction } from "./spendTest.js";
 import { placeCallAction, type PlaceOutbound } from "./placeCall.js";
+import { registerGoogleActions, type GoogleActionsApi } from "./google.js";
 
 export function registerBuiltins(
   reg: ActionRegistry,
-  deps: { memory: MemoryRepo; db: Db; placeOutbound?: PlaceOutbound }
+  deps: {
+    memory: MemoryRepo;
+    db: Db;
+    placeOutbound?: PlaceOutbound;
+    google?: GoogleActionsApi;
+  }
 ): void {
   reg.register(rememberAction(deps.memory));
   reg.register(setReminderAction(deps.db));
   reg.register(sendTestMessageAction());
   reg.register(spendTestAction());
   reg.register(placeCallAction({ placeOutbound: deps.placeOutbound }));
+  if (deps.google) registerGoogleActions(reg, deps.google);
 }

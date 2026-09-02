@@ -539,6 +539,42 @@ if (settingsForm) {
   });
 }
 
+async function loadGoogle() {
+  const box = $("google-box");
+  if (!box) return;
+  const { ok, data } = await api("/api/google");
+  const status = $("google-status");
+  const connect = $("google-connect");
+  const disconnect = $("google-disconnect");
+  if (!ok) return;
+  if (!data.available) {
+    status.textContent = "Not configured yet — GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are unset.";
+    connect.hidden = true;
+    disconnect.hidden = true;
+    return;
+  }
+  if (data.connected) {
+    status.textContent = "Connected. Jarvis can read your inbox, draft mail, and manage your calendar.";
+    connect.hidden = true;
+    disconnect.hidden = false;
+  } else {
+    status.textContent = "Not connected. Connect to let Jarvis use Gmail and Calendar.";
+    connect.hidden = false;
+    disconnect.hidden = true;
+  }
+}
+const googleDisconnect = $("google-disconnect");
+if (googleDisconnect) {
+  googleDisconnect.addEventListener("click", async () => {
+    await api("/api/google/disconnect", { method: "POST" });
+    loadGoogle();
+  });
+}
+loadGoogle();
+if (location.search.includes("google=connected")) {
+  history.replaceState({}, "", location.pathname);
+}
+
 function pendingCard(p) {
   const el = document.createElement("div");
   el.className = "card";

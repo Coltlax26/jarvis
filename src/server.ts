@@ -21,7 +21,10 @@ import { VoiceSurface } from "./surfaces/voice/index.js";
 import type { VoiceResolved } from "./surfaces/voice/index.js";
 import { OutboundCallRepo } from "./surfaces/voice/calls.js";
 import { ElevenLabsClient } from "./surfaces/elevenlabs/client.js";
+import { GoogleTokenRepo } from "./surfaces/google/repo.js";
+import { GoogleClient } from "./surfaces/google/client.js";
 import { Scheduler } from "./scheduler/index.js";
+import { CalendarReminderJob } from "./scheduler/calendarReminders.js";
 
 async function main() {
   const config = loadConfig();
@@ -76,6 +79,16 @@ async function main() {
   const registry = new ActionRegistry();
   const gate = new ActionGate(db, registry);
   const outboundCalls = new OutboundCallRepo(db);
+
+  const googleTokens = new GoogleTokenRepo(db);
+  const google = config.google
+    ? new GoogleClient({
+        clientId: config.google.clientId,
+        clientSecret: config.google.clientSecret,
+        redirectUri: `${config.publicUrl.replace(/\/$/, "")}/auth/google/callback`,
+        tokens: googleTokens,
+      })
+    : undefined;
 
   const runner = new SdkRunner({
     model: "claude-opus-5",
@@ -151,7 +164,13 @@ async function main() {
     memory,
     db,
     placeOutbound: voice ? (input) => voice!.placeOutboundCall(input) : undefined,
+    google,
   });
+  if (!google) {
+    logger.warn(
+      "Google (Gmail + Calendar) disabled — set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET"
+    );
+  }
 
   surfaces.add(
     new WebSurface({
@@ -209,6 +228,14 @@ async function main() {
             },
           }
         : undefined,
+      google: google
+        ? {
+            authUrl: (state) => google.authUrl(state),
+            connect: (userId, code) => google.connect(userId, code),
+            isConnected: (userId) => google.isConnected(userId),
+            disconnect: (userId) => google.disconnect(userId),
+          }
+        : undefined,
     })
   );
 
@@ -239,11 +266,17 @@ async function main() {
   });
   scheduler.start();
 
+  const calendarJob = google
+    ? new CalendarReminderJob({ db, google, tokens: googleTokens })
+    : null;
+  calendarJob?.start();
+
   logger.info("Jarvis is up");
 
   const shutdown = async () => {
     logger.info("shutting down");
     scheduler.stop();
+    calendarJob?.stop();
     await surfaces.stopAll();
     await db.close();
     process.exit(0);
