@@ -33,7 +33,9 @@ export type VoiceHook = {
   greeting(from: string, callSid: string): Promise<string>;
   turn(from: string, speech: string, callSid: string): Promise<string>;
   callStatus(callSid: string, status: string): void;
-  announcementFor(token: string): string;
+  announcementFor(token: string): Promise<string>;
+  /** mp3 bytes for a generated ElevenLabs line, or null if unknown/expired. */
+  audioFor(id: string): Buffer | null;
   activeCalls(): { userId: string; name: string; sinceMs: number }[];
 };
 
@@ -348,7 +350,7 @@ export function createApp(deps: Deps): Express {
       res.status(204).end();
     });
 
-    app.post("/twilio/voice/announce", form, (req, res) => {
+    app.post("/twilio/voice/announce", form, async (req, res) => {
       const params = (req.body ?? {}) as Record<string, string>;
       const token = String(req.query.t ?? "");
       const fullUrl = `${voice.announceUrl}?t=${token}`;
@@ -356,7 +358,16 @@ export function createApp(deps: Deps): Express {
         logger.warn("rejected twilio announce: bad signature");
         return res.status(403).send("bad signature");
       }
-      xml(res, voice.announcementFor(token));
+      xml(res, await voice.announcementFor(token));
+    });
+
+    // Generated ElevenLabs audio, fetched by Twilio's <Play>. Unguessable id,
+    // short TTL, no signature (Twilio's media fetcher doesn't sign GETs).
+    app.get("/voice/audio/:id", (req, res) => {
+      const id = String(req.params.id ?? "").replace(/\.mp3$/, "");
+      const mp3 = voice.audioFor(id);
+      if (!mp3) return res.status(404).end();
+      res.set("Content-Type", "audio/mpeg").send(mp3);
     });
   }
 

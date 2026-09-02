@@ -12,15 +12,22 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => XML_ESCAPE[c]!);
 export type TwiMLOptions = {
   /** Twilio TTS voice — a refined British male, close to the movie JARVIS. */
   voice: string;
+  /** If set, <Play> this audio URL instead of <Say> (ElevenLabs). */
+  playUrl?: string;
   /** Absolute URL Twilio should POST the caller's speech to. */
   actionUrl?: string;
   /** <Gather speechTimeout>: "auto" or a number of seconds. Default "auto". */
   speechTimeout?: string;
 };
 
+const speak = (text: string, opts: { voice: string; playUrl?: string }): string =>
+  opts.playUrl
+    ? `<Play>${esc(opts.playUrl)}</Play>`
+    : `<Say voice="${esc(opts.voice)}">${esc(text)}</Say>`;
+
 /** Build a TwiML document that speaks `text` then optionally listens for a reply. */
 export function conversationTwiML(text: string, opts: TwiMLOptions): string {
-  const say = `<Say voice="${esc(opts.voice)}">${esc(text)}</Say>`;
+  const say = speak(text, opts);
   if (!opts.actionUrl) {
     return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}<Hangup/></Response>`;
   }
@@ -35,10 +42,13 @@ export function conversationTwiML(text: string, opts: TwiMLOptions): string {
 }
 
 /** A one-way spoken message (proactive call, reminder). */
-export function announceTwiML(text: string, opts: { voice: string }): string {
+export function announceTwiML(
+  text: string,
+  opts: { voice: string; playUrl?: string }
+): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +
-    `<Say voice="${esc(opts.voice)}">${esc(text)}</Say><Hangup/></Response>`
+    `${speak(text, opts)}<Hangup/></Response>`
   );
 }
 

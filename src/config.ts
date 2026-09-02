@@ -69,6 +69,8 @@ export type Config = {
   voiceModel: string;
   /** <Gather speechTimeout>: "auto" (Twilio decides) or seconds of silence. */
   voiceSpeechTimeout: string;
+  /** ElevenLabs TTS (higher quality than Twilio's built-in voices). */
+  elevenLabs: { apiKey: string; voiceId: string } | null;
   tz: string;
   workspaceDir: string;
   publicUrl: string;
@@ -223,6 +225,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     voiceTts: env.VOICE_TTS?.trim() || "Google.en-GB-Chirp3-HD-Charon",
     voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
     voiceSpeechTimeout: env.VOICE_SPEECH_TIMEOUT?.trim() || "auto",
+    elevenLabs: env.ELEVENLABS_API_KEY?.trim()
+      ? {
+          apiKey: env.ELEVENLABS_API_KEY.trim(),
+          // Default: "Daniel" — deep, authoritative British male, close to JARVIS.
+          voiceId: env.ELEVENLABS_VOICE_ID?.trim() || "onwK4e9ZLuTAKqWW03F9",
+        }
+      : null,
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",
     publicUrl: env.PUBLIC_URL?.trim() || "http://localhost:3000",

@@ -81,8 +81,8 @@ describe("VoiceSurface", () => {
     expect(twiml).toContain("<Hangup/>");
   });
 
-  it("announcement for an unknown token is graceful", () => {
-    expect(voice.announcementFor("nope")).toContain("expired");
+  it("announcement for an unknown token is graceful", async () => {
+    expect(await voice.announcementFor("nope")).toContain("expired");
   });
 
   it("streams call events to the bus for the live console", async () => {
@@ -97,6 +97,78 @@ describe("VoiceSurface", () => {
       .map((e) => `${(e.data as { speaker: string }).speaker}:${e.text}`);
     expect(transcript).toContain("caller:what's the weather");
     expect(transcript).toContain("jarvis:The weather is fine.");
+  });
+
+  it("uses <Play> with a generated audio URL when the ElevenLabs engine is on", async () => {
+    const calls: string[] = [];
+    const el = {
+      synthesize: async (text: string) => {
+        calls.push(text);
+        return Buffer.from("ID3fake-mp3");
+      },
+    };
+    const memory = new MemoryRepo(db);
+    const registry = new ActionRegistry();
+    registerBuiltins(registry, { memory, db });
+    const gate = new ActionGate(db, registry);
+    const brain = new Brain({
+      memory,
+      gate,
+      registry,
+      runner: new FakeRunner([{ say: "Understood." }]),
+      config: { tz: "UTC", workspaceDir: "./workspace" } as Pick<Config, "tz" | "workspaceDir">,
+    });
+    const elVoice = new VoiceSurface({
+      accountSid: "AC1",
+      authToken: "tok",
+      fromNumber: "+15550001111",
+      voice: "Polly.Brian-Neural",
+      publicUrl: "https://jarvis.example.com",
+      users: [{ phone: "+15551234567", userId: "colt", name: "Colt", greeting: null, signoff: null }],
+      brain,
+      gate,
+      elevenLabs: el as unknown as ConstructorParameters<typeof VoiceSurface>[0]["elevenLabs"],
+    });
+    const twiml = await elVoice.greeting("+15551234567", "CA2");
+    expect(calls.length).toBe(1);
+    expect(twiml).toContain("<Play>");
+    expect(twiml).not.toContain("<Say");
+    const m = twiml.match(/\/voice\/audio\/([a-f0-9-]+)\.mp3/);
+    expect(m).not.toBeNull();
+    expect(elVoice.audioFor(m![1]!)?.toString()).toBe("ID3fake-mp3");
+  });
+
+  it("falls back to <Say> when ElevenLabs synthesis throws", async () => {
+    const el = {
+      synthesize: async () => {
+        throw new Error("EL down");
+      },
+    };
+    const memory = new MemoryRepo(db);
+    const registry = new ActionRegistry();
+    registerBuiltins(registry, { memory, db });
+    const gate = new ActionGate(db, registry);
+    const brain = new Brain({
+      memory,
+      gate,
+      registry,
+      runner: new FakeRunner([{ say: "ok" }]),
+      config: { tz: "UTC", workspaceDir: "./workspace" } as Pick<Config, "tz" | "workspaceDir">,
+    });
+    const elVoice = new VoiceSurface({
+      accountSid: "AC1",
+      authToken: "tok",
+      fromNumber: "+15550001111",
+      voice: "Polly.Brian-Neural",
+      publicUrl: "https://jarvis.example.com",
+      users: [{ phone: "+15551234567", userId: "colt", name: "Colt", greeting: null, signoff: null }],
+      brain,
+      gate,
+      elevenLabs: el as unknown as ConstructorParameters<typeof VoiceSurface>[0]["elevenLabs"],
+    });
+    const twiml = await elVoice.greeting("+15551234567", "CA3");
+    expect(twiml).toContain("<Say");
+    expect(twiml).not.toContain("<Play>");
   });
 
   it("verifies its own signature scheme", () => {
