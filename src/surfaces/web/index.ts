@@ -18,47 +18,6 @@ import type { Surface } from "../types.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
 
-export type SmsHook = {
-  webhookUrl: string;
-  verify(signature: string | undefined, url: string, params: Record<string, string>): boolean;
-  userForPhone(from: string): string | undefined;
-  handleInbound(from: string, body: string): Promise<void>;
-};
-
-export type VoiceHook = {
-  incomingUrl: string;
-  turnUrl: string;
-  announceUrl: string;
-  statusUrl: string;
-  verify(signature: string | undefined, url: string, params: Record<string, string>): boolean;
-  greeting(from: string, callSid: string): Promise<string>;
-  turn(from: string, speech: string, callSid: string): Promise<string>;
-  callStatus(callSid: string, status: string): void;
-  announcementFor(token: string): Promise<string>;
-  /** mp3 bytes for a generated ElevenLabs line, or null if unknown/expired. */
-  audioFor(id: string): Buffer | null;
-  activeCalls(): { userId: string; name: string; sinceMs: number }[];
-  /** Outbound calls (Tier-2 place_call action). */
-  outbound?: {
-    incomingUrl: string;
-    turnUrl: string;
-    statusUrl: string;
-    greeting(id: string, callSid: string): Promise<string>;
-    turn(id: string, callSid: string, speech: string): Promise<string>;
-    status(id: string, status: string): Promise<void>;
-    history(ownerId: string): Promise<
-      {
-        id: string;
-        counterparty: string;
-        purpose: string;
-        status: string;
-        transcript: { speaker: string; text: string }[];
-        createdAt: Date;
-      }[]
-    >;
-  };
-};
-
 type Deps = {
   users: JarvisUser[];
   sessionSecret: string;
@@ -76,8 +35,6 @@ type Deps = {
   db: Db;
   /** Env-var defaults, shown in the Settings tab when nothing is overridden. */
   settingDefaults: Record<string, string>;
-  sms?: SmsHook;
-  voice?: VoiceHook;
   google?: GoogleHook;
   browseShot?: (id: string) => Buffer | null;
 };
@@ -265,39 +222,23 @@ export function createApp(deps: Deps): Express {
   });
 
   app.get("/api/settings", requireAuth, async (req, res) => {
-    const userId = uid(req);
-    const stored = await deps.settings.all(userId);
+    const stored = await deps.settings.all(uid(req));
     const out: Record<string, { value: string; default: string; overridden: boolean }> = {};
-    for (const key of SETTING_KEYS) {
+    for (const key of SETTING_KEYS as readonly string[]) {
       const def = deps.settingDefaults[key] ?? "";
-      out[key] = {
-        value: stored[key] ?? def,
-        default: def,
-        overridden: key in stored,
-      };
+      out[key] = { value: stored[key] ?? def, default: def, overridden: key in stored };
     }
     res.json({ settings: out, keys: SETTING_KEYS });
   });
 
   app.put("/api/settings", requireAuth, async (req, res) => {
-    const userId = uid(req);
     const body = (req.body ?? {}) as Record<string, unknown>;
     const updates: Record<string, string> = {};
-    for (const key of SETTING_KEYS) {
+    for (const key of SETTING_KEYS as readonly string[]) {
       if (key in body) updates[key] = String(body[key] ?? "");
     }
-    await deps.settings.setMany(userId, updates);
+    await deps.settings.setMany(uid(req), updates);
     res.json({ ok: true });
-  });
-
-  app.get("/api/voice", requireAuth, async (req, res) => {
-    const userId = uid(req);
-    const active = (deps.voice?.activeCalls() ?? []).filter((c) => c.userId === userId);
-    const calls = (await deps.activity.recent(userId, 60)).filter((a) =>
-      ["call_started", "call_ended"].includes(a.kind)
-    );
-    const outbound = (await deps.voice?.outbound?.history(userId)) ?? [];
-    res.json({ enabled: Boolean(deps.voice), active, calls, outbound });
   });
 
   // Google (Gmail + Calendar) connect flow.
@@ -335,154 +276,6 @@ export function createApp(deps: Deps): Express {
     app.get("/api/google", requireAuth, (_req, res) =>
       res.json({ available: false, connected: false })
     );
-  }
-
-  // Twilio inbound SMS webhook (form-encoded, no session).
-  if (deps.sms) {
-    const sms = deps.sms;
-    app.post(
-      "/twilio/sms",
-      express.urlencoded({ extended: false }),
-      (req, res) => {
-        const params = (req.body ?? {}) as Record<string, string>;
-        if (!sms.verify(req.header("X-Twilio-Signature"), sms.webhookUrl, params)) {
-          logger.warn("rejected twilio webhook: bad signature");
-          return res.status(403).send("bad signature");
-        }
-        const from = String(params.From ?? "");
-        const body = String(params.Body ?? "").trim();
-        res.set("Content-Type", "text/xml").send("<Response></Response>");
-        if (from && body && sms.userForPhone(from)) {
-          void sms.handleInbound(from, body);
-        } else if (from && !sms.userForPhone(from)) {
-          logger.warn("sms from unknown number", { from });
-        }
-      }
-    );
-  }
-
-  // Twilio Voice webhooks.
-  if (deps.voice) {
-    const voice = deps.voice;
-    const form = express.urlencoded({ extended: false });
-    const xml = (res: Response, doc: string) =>
-      res.set("Content-Type", "text/xml").send(doc);
-
-    app.post("/twilio/voice", form, async (req, res) => {
-      const params = (req.body ?? {}) as Record<string, string>;
-      if (!voice.verify(req.header("X-Twilio-Signature"), voice.incomingUrl, params)) {
-        logger.warn("rejected twilio voice webhook: bad signature");
-        return res.status(403).send("bad signature");
-      }
-      try {
-        xml(
-          res,
-          await voice.greeting(String(params.From ?? ""), String(params.CallSid ?? ""))
-        );
-      } catch (err) {
-        logger.error("voice greeting failed", err);
-        xml(
-          res,
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Jarvis is briefly unavailable. Please call back.</Say><Hangup/></Response>'
-        );
-      }
-    });
-
-    app.post("/twilio/voice/turn", form, async (req, res) => {
-      const params = (req.body ?? {}) as Record<string, string>;
-      if (!voice.verify(req.header("X-Twilio-Signature"), voice.turnUrl, params)) {
-        logger.warn("rejected twilio voice turn: bad signature");
-        return res.status(403).send("bad signature");
-      }
-      try {
-        const doc = await voice.turn(
-          String(params.From ?? ""),
-          String(params.SpeechResult ?? ""),
-          String(params.CallSid ?? "")
-        );
-        xml(res, doc);
-      } catch (err) {
-        logger.error("voice turn route failed", err);
-        xml(
-          res,
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Something went wrong. Goodbye.</Say><Hangup/></Response>'
-        );
-      }
-    });
-
-    app.post("/twilio/voice/status", form, (req, res) => {
-      const params = (req.body ?? {}) as Record<string, string>;
-      if (!voice.verify(req.header("X-Twilio-Signature"), voice.statusUrl, params)) {
-        return res.status(403).send("bad signature");
-      }
-      voice.callStatus(String(params.CallSid ?? ""), String(params.CallStatus ?? ""));
-      res.status(204).end();
-    });
-
-    app.post("/twilio/voice/announce", form, async (req, res) => {
-      const params = (req.body ?? {}) as Record<string, string>;
-      const token = String(req.query.t ?? "");
-      const fullUrl = `${voice.announceUrl}?t=${token}`;
-      if (!voice.verify(req.header("X-Twilio-Signature"), fullUrl, params)) {
-        logger.warn("rejected twilio announce: bad signature");
-        return res.status(403).send("bad signature");
-      }
-      xml(res, await voice.announcementFor(token));
-    });
-
-    // Outbound calls (Tier-2 place_call). `c` is our voice_calls id.
-    if (voice.outbound) {
-      const ob = voice.outbound;
-      app.post("/twilio/voice/outbound", form, async (req, res) => {
-        const params = (req.body ?? {}) as Record<string, string>;
-        const id = String(req.query.c ?? "");
-        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.incomingUrl}?c=${id}`, params)) {
-          return res.status(403).send("bad signature");
-        }
-        try {
-          xml(res, await ob.greeting(id, String(params.CallSid ?? "")));
-        } catch (err) {
-          logger.error("outbound greeting failed", err);
-          xml(res, '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
-        }
-      });
-
-      app.post("/twilio/voice/outbound/turn", form, async (req, res) => {
-        const params = (req.body ?? {}) as Record<string, string>;
-        const id = String(req.query.c ?? "");
-        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.turnUrl}?c=${id}`, params)) {
-          return res.status(403).send("bad signature");
-        }
-        try {
-          xml(
-            res,
-            await ob.turn(id, String(params.CallSid ?? ""), String(params.SpeechResult ?? ""))
-          );
-        } catch (err) {
-          logger.error("outbound turn failed", err);
-          xml(res, '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
-        }
-      });
-
-      app.post("/twilio/voice/outbound/status", form, async (req, res) => {
-        const params = (req.body ?? {}) as Record<string, string>;
-        const id = String(req.query.c ?? "");
-        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.statusUrl}?c=${id}`, params)) {
-          return res.status(403).send("bad signature");
-        }
-        await ob.status(id, String(params.CallStatus ?? ""));
-        res.status(204).end();
-      });
-    }
-
-    // Generated ElevenLabs audio, fetched by Twilio's <Play>. Unguessable id,
-    // short TTL, no signature (Twilio's media fetcher doesn't sign GETs).
-    app.get("/voice/audio/:id", (req, res) => {
-      const id = String(req.params.id ?? "").replace(/\.mp3$/, "");
-      const mp3 = voice.audioFor(id);
-      if (!mp3) return res.status(404).end();
-      res.set("Content-Type", "audio/mpeg").send(mp3);
-    });
   }
 
   if (deps.browseShot) {

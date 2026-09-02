@@ -114,10 +114,7 @@ async function enterApp(name, theme) {
   startClock();
   connectStream();
   refreshOverview();
-  refreshVoice();
-  loadSettings();
   setInterval(refreshOverview, 8000);
-  setInterval(refreshVoice, 10000);
   setTimeout(() => loginScreen.remove(), 500);
 }
 
@@ -181,108 +178,6 @@ function bubble(text, who) {
   log.scrollTop = log.scrollHeight;
   return el;
 }
-/* live call UI */
-let onCall = false;
-let callTimeout = null;
-function switchToTab(view) {
-  const btn = document.querySelector('.tab[data-view="' + view + '"]');
-  if (btn && !btn.classList.contains("active")) btn.click();
-}
-function showCallBanner(text) {
-  $("call-banner-text").textContent = text;
-  $("call-banner").hidden = false;
-  bumpCallTimeout();
-}
-function hideCallBanner() {
-  $("call-banner").hidden = true;
-  if (callTimeout) { clearTimeout(callTimeout); callTimeout = null; }
-}
-function bumpCallTimeout() {
-  if (callTimeout) clearTimeout(callTimeout);
-  // safety: if we hear nothing for 90s, assume the call dropped
-  callTimeout = setTimeout(() => { onCall = false; hideCallBanner(); }, 90000);
-}
-/* voice tab */
-function setVoiceStatus(onCallNow, headline, sub) {
-  $("voice-status").classList.toggle("on-call", !!onCallNow);
-  $("voice-headline").textContent = headline;
-  $("voice-sub").textContent = sub;
-}
-function addVoiceLine(text, who) {
-  const box = $("voice-transcript");
-  if (box.querySelector(".empty")) box.innerHTML = "";
-  const el = document.createElement("div");
-  el.className = "line " + who;
-  el.textContent = (who === "caller" ? "You: " : "Jarvis: ") + text;
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-}
-async function refreshVoice() {
-  const { ok, data } = await api("/api/voice");
-  if (!ok) return;
-  if (!onCall) {
-    if (data.active && data.active.length) {
-      setVoiceStatus(true, "On a call with " + data.active[0].name, "Live");
-      $("badge-voice").textContent = "●";
-    } else {
-      setVoiceStatus(false, "No active call", "Call your Jarvis number to talk");
-      $("badge-voice").textContent = "";
-    }
-  }
-  const h = $("voice-history");
-  h.innerHTML = "";
-  const calls = (data.calls || []).slice(0, 20);
-  if (!calls.length) h.innerHTML = '<div class="empty">No calls yet.</div>';
-  for (const c of calls) h.appendChild(eventRow(c));
-
-  const ob = $("voice-outbound");
-  if (ob) {
-    ob.innerHTML = "";
-    const list = (data.outbound || []).slice(0, 20);
-    if (!list.length) ob.innerHTML = '<div class="empty">None yet.</div>';
-    for (const c of list) {
-      const row = document.createElement("div");
-      row.className = "ob-call";
-      const head = document.createElement("div");
-      head.className = "ob-head";
-      head.textContent = `→ ${c.counterparty} · ${c.status}`;
-      const why = document.createElement("div");
-      why.className = "ob-why";
-      why.textContent = c.purpose;
-      row.appendChild(head);
-      row.appendChild(why);
-      for (const line of (c.transcript || []).slice(-8)) {
-        const l = document.createElement("div");
-        l.className = "ob-line " + (line.speaker === "jarvis" ? "jarvis" : "them");
-        l.textContent = (line.speaker === "jarvis" ? "Jarvis: " : "Them: ") + line.text;
-        row.appendChild(l);
-      }
-      ob.appendChild(row);
-    }
-  }
-}
-
-function addPhoneLine(text, who) {
-  if (who === "jarvis") {
-    const row = document.createElement("div");
-    row.className = "msg-row phone";
-    const av = document.createElement("span");
-    av.className = "javatar";
-    av.innerHTML = JARVIS_MARK;
-    const el = document.createElement("div");
-    el.className = "msg jarvis phone";
-    el.textContent = text;
-    row.append(av, el);
-    log.appendChild(row);
-  } else {
-    const el = document.createElement("div");
-    el.className = "msg me phone";
-    el.textContent = text;
-    log.appendChild(el);
-  }
-  log.scrollTop = log.scrollHeight;
-}
-
 function showThinking(label) {
   clearThinking();
   thinkingEl = document.createElement("div");
@@ -346,32 +241,6 @@ function connectStream() {
     const e = JSON.parse(ev.data);
     pushEvent(e);
 
-    // --- live phone call ---
-    if (e.kind === "call_started") {
-      onCall = true;
-      showCallBanner(e.text || "On a call");
-      bubble("📞 " + (e.text || "Incoming call") + " — Jarvis answered", "system");
-      $("badge-voice").textContent = "●";
-      setVoiceStatus(true, e.text || "On a call", "Live");
-      $("voice-transcript").innerHTML = "";
-    }
-    if (e.kind === "call_transcript") {
-      const speaker = e.data && e.data.speaker;
-      addPhoneLine(e.text, speaker === "caller" ? "me" : "jarvis");
-      addVoiceLine(e.text, speaker === "caller" ? "caller" : "jarvis");
-      bumpCallTimeout();
-    }
-    if (e.kind === "call_ended") {
-      onCall = false;
-      hideCallBanner();
-      bubble("📞 Call ended. Transcript saved.", "system");
-      $("badge-voice").textContent = "";
-      setVoiceStatus(false, "Call ended", "Transcript saved");
-      refreshOverview();
-      refreshVoice();
-    }
-    if (onCall) return; // during a call, the events above drive the UI
-
     if (e.kind === "turn_start" || e.kind === "thinking" || e.kind === "tool_run") setState("working");
     if (e.kind === "thinking") showThinking(e.text);
     if (e.kind === "tool_run") showThinking(e.text + "…");
@@ -391,7 +260,6 @@ const EVT_ICON = {
   turn_start: "◈", thinking: "◇", tool_run: "▸", tool_held: "❚❚", tool_rejected: "✕",
   reply: "✓", turn_end: "✓", error: "!", message_in: "◈", action_run: "▸",
   action_held: "❚❚", action_approved: "✓", action_rejected: "✕", reminder_sent: "◔",
-  call_started: "📞", call_ended: "📴", call_transcript: "🗣",
 };
 function eventRow(e) {
   const row = document.createElement("div");
@@ -487,58 +355,6 @@ function buildBrief(t) {
 }
 
 /* ---------------- settings ---------------- */
-const VOICE_OPTIONS = [
-  ["Google.en-GB-Chirp3-HD-Charon", "British male — natural (default)"],
-  ["Google.en-GB-Chirp3-HD-Fenrir", "British male — natural, deeper"],
-  ["Google.en-GB-Chirp3-HD-Puck", "British male — natural, lighter"],
-  ["Google.en-GB-Chirp3-HD-Aoede", "British female — natural"],
-  ["Google.en-US-Chirp3-HD-Charon", "US male — natural"],
-  ["Polly.Arthur-Neural", "British male — neural"],
-  ["Polly.Brian-Neural", "British male — neural (older)"],
-  ["Polly.Amy-Generative", "British female — generative"],
-  ["Polly.Matthew-Generative", "US male — generative"],
-  ["Polly.Stephen-Generative", "US male — generative, warm"],
-];
-async function loadSettings() {
-  const sel = $("set-voice");
-  if (sel && !sel.options.length) {
-    for (const [v, label] of VOICE_OPTIONS) {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = label;
-      sel.appendChild(o);
-    }
-  }
-  const { ok, data } = await api("/api/settings");
-  if (!ok) return;
-  const form = $("settings-form");
-  for (const key of data.keys) {
-    const field = form.elements[key];
-    if (!field) continue;
-    const v = data.settings[key].value;
-    if (field.tagName === "SELECT" && !Array.from(field.options).some((o) => o.value === v)) {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = v + " (custom)";
-      field.appendChild(o);
-    }
-    field.value = v;
-  }
-}
-const settingsForm = $("settings-form");
-if (settingsForm) {
-  settingsForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = {};
-    for (const el of settingsForm.elements) {
-      if (el.name) body[el.name] = el.value;
-    }
-    const { ok } = await api("/api/settings", { method: "PUT", body });
-    $("settings-saved").textContent = ok ? "✓ Saved" : "Error saving";
-    setTimeout(() => ($("settings-saved").textContent = ""), 2500);
-  });
-}
-
 async function loadGoogle() {
   const box = $("google-box");
   if (!box) return;

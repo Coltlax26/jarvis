@@ -18,21 +18,20 @@ afterEach(async () => {
 
 describe("SettingsRepo", () => {
   it("returns the fallback when unset, the stored value when set", async () => {
-    expect(await repo.get("colt", "voice_tts", "DefaultVoice")).toBe("DefaultVoice");
-    await repo.set("colt", "voice_tts", "Polly.Arthur-Neural");
-    expect(await repo.get("colt", "voice_tts", "DefaultVoice")).toBe("Polly.Arthur-Neural");
+    expect(await repo.get("colt", "tz", "UTC")).toBe("UTC");
+    await repo.set("colt", "tz", "America/New_York");
+    expect(await repo.get("colt", "tz", "UTC")).toBe("America/New_York");
   });
 
   it("clearing a value falls back to the default again", async () => {
-    await repo.set("colt", "voice_greeting", "Hi there");
-    await repo.set("colt", "voice_greeting", "");
-    expect(await repo.get("colt", "voice_greeting", "Good day")).toBe("Good day");
-    const all = await repo.all("colt");
-    expect(all.voice_greeting).toBeUndefined();
+    await repo.set("colt", "greeting", "Hi there");
+    await repo.set("colt", "greeting", "");
+    expect(await repo.get("colt", "greeting", "Good day")).toBe("Good day");
+    expect((await repo.all("colt")).greeting).toBeUndefined();
   });
 
   it("setMany writes a batch and all() reads it back", async () => {
-    await repo.setMany("colt", { voice_tts: "V", voice_speech_timeout: "1" });
-    expect(await repo.all("colt")).toEqual({ voice_tts: "V", voice_speech_timeout: "1" });
+    await repo.setMany("colt", { a: "1", b: "2" });
+    expect(await repo.all("colt")).toEqual({ a: "1", b: "2" });
   });
 });

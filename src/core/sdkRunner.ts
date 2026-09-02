@@ -8,32 +8,25 @@ const SAFE_BUILTIN_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+let loggedAuthSource = false;
+
+/**
+ * Runs a turn through the Claude Agent SDK, which spawns the `claude` CLI as a
+ * subprocess. The subprocess inherits `process.env`, so auth resolves in the
+ * usual `claude` order: `ANTHROPIC_API_KEY` if set (pay-per-token API billing),
+ * otherwise the machine's claude.ai OAuth login (covered by a Claude
+ * subscription). Jarvis running on the owner's Mac uses the subscription — free.
+ */
 export class SdkRunner implements ModelRunner {
   constructor(
     private opts: {
       model: string;
-      apiKey: string;
       workspaceDir: string;
-      anthropicWorkspaceId?: string | null;
       timeoutMs?: number;
     }
   ) {}
 
   async run(req: RunRequest): Promise<RunResult> {
-    process.env.ANTHROPIC_API_KEY = this.opts.apiKey;
-    // Identity-linked API keys must send an `anthropic-workspace-id` header on
-    // every request. The SDK reads extra headers from ANTHROPIC_CUSTOM_HEADERS
-    // (newline-separated `Name: value` pairs). ANTHROPIC_WORKSPACE_ID alone only
-    // applies to OIDC federation auth, not plain API keys.
-    if (this.opts.anthropicWorkspaceId) {
-      const header = `anthropic-workspace-id: ${this.opts.anthropicWorkspaceId}`;
-      const existing = process.env.ANTHROPIC_CUSTOM_HEADERS;
-      process.env.ANTHROPIC_CUSTOM_HEADERS =
-        existing && !existing.includes("anthropic-workspace-id")
-          ? `${existing}\n${header}`
-          : header;
-    }
-
     const jarvisTools = req.toolActions.map((action) => {
       const shape: AnyZodRawShape =
         (action.schema as unknown as { shape?: AnyZodRawShape }).shape ?? {
@@ -89,6 +82,17 @@ export class SdkRunner implements ModelRunner {
       let finalText = "";
       let cost = 0;
       for await (const message of stream) {
+        if (message.type === "system" && message.subtype === "init" && !loggedAuthSource) {
+          loggedAuthSource = true;
+          const src = message.apiKeySource;
+          logger.info("model auth", {
+            source: src,
+            billing:
+              src === "none"
+                ? "claude.ai subscription (free)"
+                : "pay-per-token API",
+          });
+        }
         if (message.type === "result") {
           cost = message.total_cost_usd ?? 0;
           if (message.subtype === "success") {

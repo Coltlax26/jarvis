@@ -12,7 +12,6 @@ export class Brain {
   private gate: ActionGate;
   private registry: ActionRegistry;
   private runner: ModelRunner;
-  private voiceRunner?: ModelRunner;
   private config: Pick<Config, "tz" | "workspaceDir">;
   private bus?: JarvisBus;
   private activity?: ActivityRepo;
@@ -22,8 +21,6 @@ export class Brain {
     gate: ActionGate;
     registry: ActionRegistry;
     runner: ModelRunner;
-    /** Faster model for phone calls, where latency matters more than depth. */
-    voiceRunner?: ModelRunner;
     config: Pick<Config, "tz" | "workspaceDir">;
     bus?: JarvisBus;
     activity?: ActivityRepo;
@@ -32,7 +29,6 @@ export class Brain {
     this.gate = deps.gate;
     this.registry = deps.registry;
     this.runner = deps.runner;
-    this.voiceRunner = deps.voiceRunner;
     this.config = deps.config;
     this.bus = deps.bus;
     this.activity = deps.activity;
@@ -68,8 +64,7 @@ export class Brain {
     const history = await this.memory.recentMessages(conversationId, 30);
     const memories = await this.memory.searchMemories(msg.userId, msg.text, 12);
 
-    const onCall = msg.surface === "voice";
-    const runner = onCall && this.voiceRunner ? this.voiceRunner : this.runner;
+    const runner = this.runner;
 
     const actions = this.registry.list();
     const systemPrompt = buildSystemPrompt({
@@ -79,7 +74,6 @@ export class Brain {
       now: new Date(),
       actions,
       memories,
-      spoken: onCall,
     });
     const userPrompt = buildUserPrompt(history, msg.text, userName);
 

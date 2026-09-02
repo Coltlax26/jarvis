@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { loadConfig, ConfigError } from "./config.js";
 
 const base = {
-  ANTHROPIC_API_KEY: "sk-ant-test",
   SESSION_SECRET: "x".repeat(32),
 };
 
@@ -53,37 +52,25 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base } as NodeJS.ProcessEnv)).toThrow(ConfigError);
   });
 
-  it("collects missing core vars into one error", () => {
+  it("requires SESSION_SECRET", () => {
     try {
       loadConfig({} as NodeJS.ProcessEnv);
       throw new Error("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError);
-      const msg = (e as ConfigError).message;
-      expect(msg).toContain("ANTHROPIC_API_KEY");
-      expect(msg).toContain("SESSION_SECRET");
+      expect((e as ConfigError).message).toContain("SESSION_SECRET");
     }
   });
 
-  it("parses user phone numbers to E.164 and reads Twilio config", () => {
-    const c = loadConfig({
-      ...base,
-      JARVIS_USERS: JSON.stringify([{ name: "Colt", password: "a", phone: "(555) 123-4567" }]),
-      TWILIO_ACCOUNT_SID: "AC1",
-      TWILIO_AUTH_TOKEN: "tok",
-      TWILIO_FROM_NUMBER: "555-000-1111",
-    } as NodeJS.ProcessEnv);
-    expect(c.users[0]!.phone).toBe("+15551234567");
-    expect(c.twilio).toEqual({ accountSid: "AC1", authToken: "tok", fromNumber: "+15550001111" });
-  });
-
-  it("leaves Twilio null when creds are incomplete", () => {
-    const c = loadConfig({
+  it("defaults to subscription auth (no API key) but keeps one if given", () => {
+    const free = loadConfig({ ...base, WEB_PASSWORD: "pw" } as NodeJS.ProcessEnv);
+    expect(free.anthropicApiKey).toBeNull();
+    const paid = loadConfig({
       ...base,
       WEB_PASSWORD: "pw",
-      TWILIO_ACCOUNT_SID: "AC1",
+      ANTHROPIC_API_KEY: "sk-ant-test",
     } as NodeJS.ProcessEnv);
-    expect(c.twilio).toBeNull();
+    expect(paid.anthropicApiKey).toBe("sk-ant-test");
   });
 
   it("passes DATABASE_URL through when set", () => {
@@ -93,5 +80,18 @@ describe("loadConfig", () => {
       DATABASE_URL: "postgres://u:p@h/db",
     } as NodeJS.ProcessEnv);
     expect(c.databaseUrl).toBe("postgres://u:p@h/db");
+  });
+
+  it("defaults the model to claude-sonnet-5, overridable by JARVIS_MODEL", () => {
+    expect(loadConfig({ ...base, WEB_PASSWORD: "pw" } as NodeJS.ProcessEnv).model).toBe(
+      "claude-sonnet-5"
+    );
+    expect(
+      loadConfig({
+        ...base,
+        WEB_PASSWORD: "pw",
+        JARVIS_MODEL: "claude-haiku-4-5",
+      } as NodeJS.ProcessEnv).model
+    ).toBe("claude-haiku-4-5");
   });
 });

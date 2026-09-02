@@ -1,13 +1,48 @@
-# Morning brief — overnight build
+# Jarvis — status brief
 
-_Running log. Newest status at the top of each section._
+_Running log. Newest at the top._
 
-## TL;DR
+## 2026-09-02 — moved to run FREE on your Mac (branch `local-free`)
 
-Overnight autonomous build against `~/.claude/plans/streamed-prancing-truffle.md`.
-`main` stays green + deployed after every item.
+**Why:** the Claude API key was costing real money. Your Claude Pro subscription
+covers it if Jarvis runs on your Mac (the `claude` login is the auth — no
+per-message charge). This can't work on a cloud server.
 
-Live URL: https://web-production-a733d.up.railway.app
+**What changed:**
+- Jarvis now runs on your Mac. `./start.sh` (or double-click it) — web console
+  at http://localhost:3000, Telegram works from your phone. Full guide:
+  `docs/RUNNING-LOCALLY.md`.
+- **Voice / phone calls removed entirely.** They need a public web address a
+  laptop can't provide, and the fast voice path can't use the free
+  subscription. The Twilio number is parked (not released) — say the word if
+  you want it gone. Twilio SMS also removed (Telegram covers texting).
+- **Railway deleted** (48-hour grace period — recoverable until ~2026-09-04 if
+  something's wrong).
+- **New: Jarvis can open things on your Mac** — "open my calendar", "open
+  Notes". Tier 0 (no approval), https URLs + named apps only.
+- Default model is now `claude-sonnet-5` (smarter; cost isn't the constraint
+  anymore). `JARVIS_MODEL=claude-haiku-4-5` in `.env` if you hit plan limits.
+- Verified: web chat replies for **$0** (log shows `auth: claude subscription`).
+  Gmail + Calendar still work (added the localhost redirect URI to Google).
+
+**Your data:** the old Railway Postgres is gone, so a few saved memories and the
+Google connection didn't carry over. Reconnect Google once (Settings → Connect
+Google) and you're set.
+
+**Review list for you:**
+- Confirm Jarvis answers you locally and it feels right.
+- Railway fully deleted (48h grace) — leave it or nothing to do.
+- Mac-control at Tier 0 (opens without asking) OK? One-word change to make it
+  ask first.
+- `claude-sonnet-5` vs `claude-haiku-4-5` — your call on quota.
+- Using a Pro subscription for an always-on personal bot is a grey area in
+  Anthropic's terms (it's meant for interactive use). Your last bot did this.
+
+---
+
+## Earlier: overnight build (on Railway — now superseded by the move above)
+
+Live URL was: https://web-production-a733d.up.railway.app
 
 ## Shipped & deployed
 
