@@ -114,7 +114,9 @@ async function enterApp(name, theme) {
   startClock();
   connectStream();
   refreshOverview();
+  refreshVoice();
   setInterval(refreshOverview, 8000);
+  setInterval(refreshVoice, 10000);
   setTimeout(() => loginScreen.remove(), 500);
 }
 
@@ -199,6 +201,40 @@ function bumpCallTimeout() {
   // safety: if we hear nothing for 90s, assume the call dropped
   callTimeout = setTimeout(() => { onCall = false; hideCallBanner(); }, 90000);
 }
+/* voice tab */
+function setVoiceStatus(onCallNow, headline, sub) {
+  $("voice-status").classList.toggle("on-call", !!onCallNow);
+  $("voice-headline").textContent = headline;
+  $("voice-sub").textContent = sub;
+}
+function addVoiceLine(text, who) {
+  const box = $("voice-transcript");
+  if (box.querySelector(".empty")) box.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "line " + who;
+  el.textContent = (who === "caller" ? "You: " : "Jarvis: ") + text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+async function refreshVoice() {
+  const { ok, data } = await api("/api/voice");
+  if (!ok) return;
+  if (!onCall) {
+    if (data.active && data.active.length) {
+      setVoiceStatus(true, "On a call with " + data.active[0].name, "Live");
+      $("badge-voice").textContent = "●";
+    } else {
+      setVoiceStatus(false, "No active call", "Call your Jarvis number to talk");
+      $("badge-voice").textContent = "";
+    }
+  }
+  const h = $("voice-history");
+  h.innerHTML = "";
+  const calls = (data.calls || []).slice(0, 20);
+  if (!calls.length) h.innerHTML = '<div class="empty">No calls yet.</div>';
+  for (const c of calls) h.appendChild(eventRow(c));
+}
+
 function addPhoneLine(text, who) {
   if (who === "jarvis") {
     const row = document.createElement("div");
@@ -288,18 +324,24 @@ function connectStream() {
       onCall = true;
       showCallBanner(e.text || "On a call");
       bubble("📞 " + (e.text || "Incoming call") + " — Jarvis answered", "system");
-      switchToTab("chat");
+      $("badge-voice").textContent = "●";
+      setVoiceStatus(true, e.text || "On a call", "Live");
+      $("voice-transcript").innerHTML = "";
     }
     if (e.kind === "call_transcript") {
       const speaker = e.data && e.data.speaker;
       addPhoneLine(e.text, speaker === "caller" ? "me" : "jarvis");
+      addVoiceLine(e.text, speaker === "caller" ? "caller" : "jarvis");
       bumpCallTimeout();
     }
     if (e.kind === "call_ended") {
       onCall = false;
       hideCallBanner();
       bubble("📞 Call ended. Transcript saved.", "system");
+      $("badge-voice").textContent = "";
+      setVoiceStatus(false, "Call ended", "Transcript saved");
       refreshOverview();
+      refreshVoice();
     }
     if (onCall) return; // during a call, the events above drive the UI
 

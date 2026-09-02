@@ -9,6 +9,8 @@ export type ActivityKind =
   | "action_approved"
   | "action_rejected"
   | "reminder_sent"
+  | "call_started"
+  | "call_ended"
   | "error";
 
 export type ActivityEntry = {

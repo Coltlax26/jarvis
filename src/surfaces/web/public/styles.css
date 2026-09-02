@@ -237,6 +237,19 @@ h2:first-child { margin-top: 4px; }
 .msg.phone { font-family: var(--sans); }
 .msg-row.phone .javatar { animation: pulse 1.6s ease-in-out infinite; }
 
+/* ---------------- voice tab ---------------- */
+#voice-status { margin-bottom: 8px; }
+#voice-status.on-call { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--glow); animation: pulse 2.2s ease-in-out infinite; }
+.vs-headline { font: 600 15px var(--hud); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+#voice-status.on-call .vs-headline { color: var(--accent); }
+.vs-sub { color: var(--ink-faint); font: 400 12px var(--mono); margin-top: 6px; }
+#voice-transcript { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+#voice-transcript .line { padding: 8px 12px; border-radius: var(--radius); font-size: 13px; max-width: 80%; }
+#voice-transcript .line.caller { align-self: flex-end; background: var(--accent); color: #04121b; }
+:root[data-theme="light"] #voice-transcript .line.caller { color: #fff; }
+#voice-transcript .line.jarvis { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+#badge-voice { background: var(--ok); color: #04170f; }
+
 /* ---------------- chat ---------------- */
 #view-chat { display: flex; flex-direction: column; height: calc(100vh - 58px - 40px); }
 #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; padding: 4px 2px 16px; }

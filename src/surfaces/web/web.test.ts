@@ -43,11 +43,11 @@ beforeEach(async () => {
   app = createApp({
     users: [
       {
-        id: "colt", name: "Colt", password: "hunter2", telegramId: null, phone: null, persona: "",
+        id: "colt", name: "Colt", password: "hunter2", telegramId: null, phone: null, persona: "", voiceGreeting: null, voiceSignoff: null,
         theme: { mode: "hud", accent: null, background: null, backgroundFit: "watermark", brand: null, logo: null },
       },
       {
-        id: "rich", name: "Rich", password: "richpw", telegramId: null, phone: null, persona: "",
+        id: "rich", name: "Rich", password: "richpw", telegramId: null, phone: null, persona: "", voiceGreeting: null, voiceSignoff: null,
         theme: { mode: "light", accent: "#1a5aa0", background: null, backgroundFit: "watermark", brand: "Peterson Sales", logo: null },
       },
     ],

@@ -27,10 +27,13 @@ export type VoiceHook = {
   incomingUrl: string;
   turnUrl: string;
   announceUrl: string;
+  statusUrl: string;
   verify(signature: string | undefined, url: string, params: Record<string, string>): boolean;
-  greeting(from: string): string;
-  turn(from: string, speech: string): Promise<string>;
+  greeting(from: string, callSid: string): string;
+  turn(from: string, speech: string, callSid: string): Promise<string>;
+  callStatus(callSid: string, status: string): void;
   announcementFor(token: string): string;
+  activeCalls(): { userId: string; name: string; sinceMs: number }[];
 };
 
 type Deps = {
@@ -224,6 +227,15 @@ export function createApp(deps: Deps): Express {
     });
   });
 
+  app.get("/api/voice", requireAuth, async (req, res) => {
+    const userId = uid(req);
+    const active = (deps.voice?.activeCalls() ?? []).filter((c) => c.userId === userId);
+    const calls = (await deps.activity.recent(userId, 60)).filter((a) =>
+      ["call_started", "call_ended"].includes(a.kind)
+    );
+    res.json({ enabled: Boolean(deps.voice), active, calls });
+  });
+
   // Twilio inbound SMS webhook (form-encoded, no session).
   if (deps.sms) {
     const sms = deps.sms;
@@ -261,7 +273,7 @@ export function createApp(deps: Deps): Express {
         logger.warn("rejected twilio voice webhook: bad signature");
         return res.status(403).send("bad signature");
       }
-      xml(res, voice.greeting(String(params.From ?? "")));
+      xml(res, voice.greeting(String(params.From ?? ""), String(params.CallSid ?? "")));
     });
 
     app.post("/twilio/voice/turn", form, async (req, res) => {
@@ -273,7 +285,8 @@ export function createApp(deps: Deps): Express {
       try {
         const doc = await voice.turn(
           String(params.From ?? ""),
-          String(params.SpeechResult ?? "")
+          String(params.SpeechResult ?? ""),
+          String(params.CallSid ?? "")
         );
         xml(res, doc);
       } catch (err) {
@@ -283,6 +296,15 @@ export function createApp(deps: Deps): Express {
           '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Something went wrong. Goodbye.</Say><Hangup/></Response>'
         );
       }
+    });
+
+    app.post("/twilio/voice/status", form, (req, res) => {
+      const params = (req.body ?? {}) as Record<string, string>;
+      if (!voice.verify(req.header("X-Twilio-Signature"), voice.statusUrl, params)) {
+        return res.status(403).send("bad signature");
+      }
+      voice.callStatus(String(params.CallSid ?? ""), String(params.CallStatus ?? ""));
+      res.status(204).end();
     });
 
     app.post("/twilio/voice/announce", form, (req, res) => {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../../logger.js";
 import type { Brain } from "../../core/brain.js";
 import type { ActionGate } from "../../actions/gate.js";
+import type { ActivityRepo } from "../../activity/repo.js";
 import type { JarvisBus, JarvisEventKind } from "../../core/events.js";
 import type { Surface } from "../types.js";
 import { parseCommand } from "../telegram/parse.js";
@@ -11,10 +12,19 @@ import {
   conversationTwiML,
 } from "../twilio/voiceClient.js";
 
-type VoiceUser = { phone: string; userId: string; name: string };
+type VoiceUser = {
+  phone: string;
+  userId: string;
+  name: string;
+  greeting: string | null;
+  signoff: string | null;
+};
 
 const isGoodbye = (s: string): boolean =>
   /\b(good\s?bye|bye now|hang up|that'?s all|nothing else|talk later|we'?re done)\b/i.test(s);
+
+const fillName = (tpl: string, name: string): string =>
+  tpl.replace(/\{name\}/gi, name);
 
 export class VoiceSurface implements Surface {
   readonly name = "voice";
@@ -26,6 +36,8 @@ export class VoiceSurface implements Surface {
   private incomingUrl: string;
   private announceBase: string;
   private announcements = new Map<string, { text: string; expires: number }>();
+  /** Per-call scratch state, keyed by Twilio CallSid. */
+  private calls = new Map<string, { userId: string; empties: number; last: number }>();
 
   constructor(
     private deps: {
@@ -38,6 +50,7 @@ export class VoiceSurface implements Surface {
       brain: Brain;
       gate: ActionGate;
       bus?: JarvisBus;
+      activity?: ActivityRepo;
     }
   ) {
     this.client = new TwilioVoiceClient({
@@ -68,6 +81,11 @@ export class VoiceSurface implements Surface {
     });
   }
 
+  private sweepCalls(): void {
+    const cutoff = Date.now() - 10 * 60_000;
+    for (const [sid, c] of this.calls) if (c.last < cutoff) this.calls.delete(sid);
+  }
+
   urls(): { incoming: string; turn: string; announce: string } {
     return { incoming: this.incomingUrl, turn: this.turnUrl, announce: this.announceBase };
   }
@@ -76,39 +94,87 @@ export class VoiceSurface implements Surface {
     return this.byPhone.get(from);
   }
 
-  /** TwiML for an inbound call. */
-  greeting(from: string): string {
-    const user = this.byPhone.get(from);
-    const hello = user
-      ? `Good day, ${user.name}. Jarvis here. How can I help?`
-      : "Jarvis here. I'm afraid I don't recognise this number, but go ahead.";
-    if (user) {
-      this.emit(user.userId, "call_started", `Incoming call from ${user.name}`);
-      this.emit(user.userId, "call_transcript", hello, { speaker: "jarvis" });
+  /** Live call state for the console's Voice tab. */
+  activeCalls(): { userId: string; name: string; sinceMs: number }[] {
+    this.sweepCalls();
+    const now = Date.now();
+    const out: { userId: string; name: string; sinceMs: number }[] = [];
+    for (const c of this.calls.values()) {
+      const u = this.byUserId.get(c.userId);
+      out.push({ userId: c.userId, name: u?.name ?? c.userId, sinceMs: now - c.last });
     }
+    return out;
+  }
+
+  /** TwiML for an inbound call. */
+  greeting(from: string, callSid: string): string {
+    this.sweepCalls();
+    const user = this.byPhone.get(from);
+    if (!user) {
+      return conversationTwiML(
+        "Jarvis here. I'm afraid I don't recognise this number. Goodbye.",
+        { voice: this.voice }
+      );
+    }
+    this.calls.set(callSid, { userId: user.userId, empties: 0, last: Date.now() });
+    const hello = fillName(
+      user.greeting ?? "Good day, {name}. Jarvis here. How can I help?",
+      user.name
+    );
+    this.emit(user.userId, "call_started", `Incoming call from ${user.name}`);
+    this.emit(user.userId, "call_transcript", hello, { speaker: "jarvis" });
+    void this.deps.activity?.log({
+      userId: user.userId,
+      kind: "call_started",
+      summary: `Call from ${user.name}`,
+    });
     return conversationTwiML(hello, { voice: this.voice, actionUrl: this.turnUrl });
   }
 
+  private endCall(user: VoiceUser, callSid: string, line: string): string {
+    this.calls.delete(callSid);
+    this.emit(user.userId, "call_transcript", line, { speaker: "jarvis" });
+    this.emit(user.userId, "call_ended", "Call ended");
+    void this.deps.activity?.log({
+      userId: user.userId,
+      kind: "call_ended",
+      summary: `Call with ${user.name} ended`,
+    });
+    return conversationTwiML(line, { voice: this.voice });
+  }
+
   /** TwiML for a spoken turn during a call. */
-  async turn(from: string, speech: string): Promise<string> {
+  async turn(from: string, speech: string, callSid: string): Promise<string> {
     const user = this.byPhone.get(from);
     if (!user) {
       return conversationTwiML("I can't help an unrecognised caller. Goodbye.", {
         voice: this.voice,
       });
     }
+    const signoff = user.signoff ?? "Very good. Goodbye.";
+    const state = this.calls.get(callSid) ?? {
+      userId: user.userId,
+      empties: 0,
+      last: Date.now(),
+    };
+    this.calls.set(callSid, { ...state, last: Date.now() });
+
     const text = speech.trim();
     if (!text) {
-      return conversationTwiML("I didn't catch that. Could you say it again?", {
-        voice: this.voice,
-        actionUrl: this.turnUrl,
-      });
+      state.empties += 1;
+      this.calls.set(callSid, { ...state, empties: state.empties, last: Date.now() });
+      if (state.empties === 1) {
+        return conversationTwiML("Are you still there?", {
+          voice: this.voice,
+          actionUrl: this.turnUrl,
+        });
+      }
+      return this.endCall(user, callSid, signoff);
     }
+    state.empties = 0;
     this.emit(user.userId, "call_transcript", text, { speaker: "caller" });
     if (isGoodbye(text)) {
-      this.emit(user.userId, "call_transcript", "Very good. Goodbye.", { speaker: "jarvis" });
-      this.emit(user.userId, "call_ended", "Call ended");
-      return conversationTwiML("Very good. Goodbye.", { voice: this.voice });
+      return this.endCall(user, callSid, signoff);
     }
     try {
       const cmd = parseCommand(text);
@@ -140,6 +206,23 @@ export class VoiceSurface implements Surface {
         "Something went wrong on my end. Try again in a moment.",
         { voice: this.voice, actionUrl: this.turnUrl }
       );
+    }
+  }
+
+  /** Twilio call status callback — fires when a call completes/fails. */
+  callStatus(callSid: string, status: string): void {
+    if (["completed", "busy", "failed", "no-answer", "canceled"].includes(status)) {
+      const state = this.calls.get(callSid);
+      this.calls.delete(callSid);
+      if (state) {
+        this.emit(state.userId, "call_ended", "Call ended");
+        const u = this.byUserId.get(state.userId);
+        void this.deps.activity?.log({
+          userId: state.userId,
+          kind: "call_ended",
+          summary: `Call with ${u?.name ?? state.userId} ended`,
+        });
+      }
     }
   }
 

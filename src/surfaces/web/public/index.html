@@ -43,6 +43,7 @@
       <nav class="tabs" id="tabs">
         <button class="tab active" data-view="chat">Chat</button>
         <button class="tab" data-view="tasks">Tasks <span class="badge" id="badge-tasks"></span></button>
+        <button class="tab" data-view="voice">Voice <span class="badge" id="badge-voice"></span></button>
         <button class="tab" data-view="memory">Memory</button>
         <button class="tab" data-view="activity">Activity</button>
       </nav>
@@ -95,6 +96,17 @@
         <div id="reminder-list"></div>
         <h2>Recently done</h2>
         <div id="done-list"></div>
+      </section>
+
+      <section class="view" id="view-voice" hidden>
+        <div id="voice-status" class="panel">
+          <div class="vs-headline" id="voice-headline">No active call</div>
+          <div class="vs-sub" id="voice-sub">Call your Jarvis number to talk</div>
+        </div>
+        <h2>Live transcript</h2>
+        <div id="voice-transcript"><div class="empty">Nothing yet.</div></div>
+        <h2>Recent calls</h2>
+        <div id="voice-history"><div class="empty">No calls yet.</div></div>
       </section>
 
       <section class="view" id="view-memory" hidden>

@@ -86,10 +86,17 @@ async function main() {
       ...config.twilio,
       voice: config.voiceTts,
       publicUrl: config.publicUrl,
-      users: phoneUsers.map((u) => ({ phone: u.phone!, userId: u.id, name: u.name })),
+      users: phoneUsers.map((u) => ({
+        phone: u.phone!,
+        userId: u.id,
+        name: u.name,
+        greeting: u.voiceGreeting,
+        signoff: u.voiceSignoff,
+      })),
       brain,
       gate,
       bus,
+      activity,
     });
     surfaces.add(voice);
   } else {
@@ -125,10 +132,13 @@ async function main() {
             incomingUrl: `${baseUrl}/twilio/voice`,
             turnUrl: `${baseUrl}/twilio/voice/turn`,
             announceUrl: `${baseUrl}/twilio/voice/announce`,
+            statusUrl: `${baseUrl}/twilio/voice/status`,
             verify: (sig, url, params) => voice!.verify(sig, url, params),
-            greeting: (from) => voice!.greeting(from),
-            turn: (from, speech) => voice!.turn(from, speech),
+            greeting: (from, sid) => voice!.greeting(from, sid),
+            turn: (from, speech, sid) => voice!.turn(from, speech, sid),
+            callStatus: (sid, status) => voice!.callStatus(sid, status),
             announcementFor: (token) => voice!.announcementFor(token),
+            activeCalls: () => voice!.activeCalls(),
           }
         : undefined,
     })

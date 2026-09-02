@@ -44,7 +44,7 @@ beforeEach(async () => {
     fromNumber: "+15550001111",
     voice: "Polly.Brian-Neural",
     publicUrl: "https://jarvis.example.com",
-    users: [{ phone: "+15551234567", userId: "colt", name: "Colt" }],
+    users: [{ phone: "+15551234567", userId: "colt", name: "Colt", greeting: null, signoff: null }],
     brain,
     gate,
     bus,
@@ -56,7 +56,7 @@ afterEach(async () => {
 
 describe("VoiceSurface", () => {
   it("greets a known caller by name and opens a Gather", () => {
-    const twiml = voice.greeting("+15551234567");
+    const twiml = voice.greeting("+15551234567", "CA1");
     expect(twiml).toContain("Good day, Colt");
     expect(twiml).toContain("<Gather");
     expect(twiml).toContain("Polly.Brian-Neural");
@@ -64,18 +64,18 @@ describe("VoiceSurface", () => {
   });
 
   it("does not greet an unknown caller by name", () => {
-    expect(voice.greeting("+19998887777")).toContain("recognise this number");
-    expect(voice.greeting("+19998887777")).not.toContain("Colt");
+    expect(voice.greeting("+19998887777", "CA9")).toContain("recognise this number");
+    expect(voice.greeting("+19998887777", "CA9")).not.toContain("Colt");
   });
 
   it("runs a spoken turn through the brain and speaks the reply", async () => {
-    const twiml = await voice.turn("+15551234567", "what's the weather");
+    const twiml = await voice.turn("+15551234567", "what's the weather", "CA1");
     expect(twiml).toContain("The weather is fine.");
     expect(twiml).toContain("<Gather");
   });
 
   it("ends the call on goodbye without a Gather", async () => {
-    const twiml = await voice.turn("+15551234567", "okay goodbye");
+    const twiml = await voice.turn("+15551234567", "okay goodbye", "CA1");
     expect(twiml).toContain("Goodbye");
     expect(twiml).not.toContain("<Gather");
     expect(twiml).toContain("<Hangup/>");
@@ -86,9 +86,9 @@ describe("VoiceSurface", () => {
   });
 
   it("streams call events to the bus for the live console", async () => {
-    voice.greeting("+15551234567");
-    await voice.turn("+15551234567", "what's the weather");
-    await voice.turn("+15551234567", "okay goodbye");
+    voice.greeting("+15551234567", "CA1");
+    await voice.turn("+15551234567", "what's the weather", "CA1");
+    await voice.turn("+15551234567", "okay goodbye", "CA1");
     const kinds = events.map((e) => e.kind);
     expect(kinds).toContain("call_started");
     expect(kinds).toContain("call_ended");

@@ -21,6 +21,10 @@ export type JarvisUser = {
   phone: string | null;
   persona: string;
   theme: UserTheme;
+  /** Spoken line when they call in. `{name}` is replaced with their name. */
+  voiceGreeting: string | null;
+  /** Spoken line when the call ends. */
+  voiceSignoff: string | null;
 };
 
 const normPhone = (v: unknown): string | null => {
@@ -105,6 +109,10 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
         phone: normPhone(rec.phone),
         persona: typeof rec.persona === "string" ? rec.persona.trim() : "",
         theme: parseTheme(rec),
+        voiceGreeting:
+          typeof rec.greeting === "string" && rec.greeting.trim() ? rec.greeting.trim() : null,
+        voiceSignoff:
+          typeof rec.signoff === "string" && rec.signoff.trim() ? rec.signoff.trim() : null,
       };
     });
     assertUniqueUsers(users);
@@ -127,6 +135,8 @@ function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
       telegramId: env.OWNER_TELEGRAM_ID?.trim() || null,
       phone: normPhone(env.OWNER_PHONE),
       persona: env.WEB_USER_PERSONA?.trim() || "",
+      voiceGreeting: env.VOICE_GREETING?.trim() || null,
+      voiceSignoff: env.VOICE_SIGNOFF?.trim() || null,
       theme: {
         mode: "hud",
         accent: null,
@@ -208,7 +218,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionSecret,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
     twilio,
-    voiceTts: env.VOICE_TTS?.trim() || "Polly.Brian-Neural",
+    voiceTts: env.VOICE_TTS?.trim() || "Google.en-GB-Chirp3-HD-Charon",
     voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
     tz: env.TZ?.trim() || "America/Denver",
     workspaceDir: env.WORKSPACE_DIR?.trim() || "./workspace",

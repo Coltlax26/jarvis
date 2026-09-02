@@ -22,14 +22,13 @@ export function conversationTwiML(text: string, opts: TwiMLOptions): string {
   if (!opts.actionUrl) {
     return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}<Hangup/></Response>`;
   }
+  // actionOnEmptyResult keeps the webhook firing even on silence, so the server
+  // always knows the state of the call and can end it deliberately.
   const gather =
     `<Gather input="speech" language="en-US" speechModel="phone_call" ` +
-    `speechTimeout="auto" action="${esc(opts.actionUrl)}" method="POST"/>`;
-  // If they say nothing, Twilio falls through past the Gather — end gracefully.
-  return (
-    `<?xml version="1.0" encoding="UTF-8"?><Response>${say}${gather}` +
-    `<Say voice="${esc(opts.voice)}">I'll be here if you need me. Goodbye.</Say><Hangup/></Response>`
-  );
+    `speechTimeout="auto" actionOnEmptyResult="true" ` +
+    `action="${esc(opts.actionUrl)}" method="POST"/>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}${gather}</Response>`;
 }
 
 /** A one-way spoken message (proactive call, reminder). */
