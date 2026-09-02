@@ -7,6 +7,7 @@ import { sendTestMessageAction } from "./sendTestMessage.js";
 import { spendTestAction } from "./spendTest.js";
 import { placeCallAction, type PlaceOutbound } from "./placeCall.js";
 import { registerGoogleActions, type GoogleActionsApi } from "./google.js";
+import { browseAction, type BrowseApi } from "./browse.js";
 
 export function registerBuiltins(
   reg: ActionRegistry,
@@ -15,6 +16,7 @@ export function registerBuiltins(
     db: Db;
     placeOutbound?: PlaceOutbound;
     google?: GoogleActionsApi;
+    browse?: BrowseApi;
   }
 ): void {
   reg.register(rememberAction(deps.memory));
@@ -23,4 +25,5 @@ export function registerBuiltins(
   reg.register(spendTestAction());
   reg.register(placeCallAction({ placeOutbound: deps.placeOutbound }));
   if (deps.google) registerGoogleActions(reg, deps.google);
+  if (deps.browse) reg.register(browseAction(deps.browse));
 }

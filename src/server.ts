@@ -23,6 +23,8 @@ import { OutboundCallRepo } from "./surfaces/voice/calls.js";
 import { ElevenLabsClient } from "./surfaces/elevenlabs/client.js";
 import { GoogleTokenRepo } from "./surfaces/google/repo.js";
 import { GoogleClient } from "./surfaces/google/client.js";
+import { BrowserRunner } from "./surfaces/browser/runner.js";
+import { BrowseService } from "./surfaces/browser/service.js";
 import { Scheduler } from "./scheduler/index.js";
 import { CalendarReminderJob } from "./scheduler/calendarReminders.js";
 
@@ -79,6 +81,13 @@ async function main() {
   const registry = new ActionRegistry();
   const gate = new ActionGate(db, registry);
   const outboundCalls = new OutboundCallRepo(db);
+
+  const browse = new BrowseService({
+    runner: new BrowserRunner(),
+    publicUrl: config.publicUrl,
+    bus,
+  });
+  logger.info("browser groundwork", { chromium: browse.available() });
 
   const googleTokens = new GoogleTokenRepo(db);
   const google = config.google
@@ -165,6 +174,7 @@ async function main() {
     db,
     placeOutbound: voice ? (input) => voice!.placeOutboundCall(input) : undefined,
     google,
+    browse: { run: (userId, input) => browse.run(userId, input) },
   });
   if (!google) {
     logger.warn(
@@ -236,6 +246,7 @@ async function main() {
             disconnect: (userId) => google.disconnect(userId),
           }
         : undefined,
+      browseShot: (id) => browse.shotFor(id),
     })
   );
 
