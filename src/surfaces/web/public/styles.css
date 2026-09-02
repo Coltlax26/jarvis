@@ -345,3 +345,11 @@ h2:first-child { margin-top: 4px; }
 }
 
 @keyframes pulse { 0%,100% { filter: drop-shadow(0 0 10px rgba(93,228,255,.3)); } 50% { filter: drop-shadow(0 0 22px rgba(93,228,255,.6)); } }
+
+/* outbound calls (place_call) */
+.ob-call { border: 1px solid var(--line, rgba(93,228,255,.25)); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.ob-head { font-weight: 600; letter-spacing: .04em; }
+.ob-why { opacity: .75; font-size: .9em; margin: 2px 0 6px; }
+.ob-line { font-size: .88em; margin: 2px 0; }
+.ob-line.jarvis { color: var(--accent, #5de4ff); }
+.ob-line.them { opacity: .85; }

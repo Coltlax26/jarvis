@@ -19,6 +19,7 @@ import { TelegramSurface } from "./surfaces/telegram/index.js";
 import { TwilioSurface } from "./surfaces/twilio/index.js";
 import { VoiceSurface } from "./surfaces/voice/index.js";
 import type { VoiceResolved } from "./surfaces/voice/index.js";
+import { OutboundCallRepo } from "./surfaces/voice/calls.js";
 import { ElevenLabsClient } from "./surfaces/elevenlabs/client.js";
 import { Scheduler } from "./scheduler/index.js";
 
@@ -73,8 +74,8 @@ async function main() {
   };
 
   const registry = new ActionRegistry();
-  registerBuiltins(registry, { memory, db });
   const gate = new ActionGate(db, registry);
+  const outboundCalls = new OutboundCallRepo(db);
 
   const runner = new SdkRunner({
     model: "claude-opus-5",
@@ -134,6 +135,9 @@ async function main() {
       bus,
       activity,
       elevenLabs,
+      calls: outboundCalls,
+      outboundRunner: voiceRunner,
+      ownerName: (id) => config.users.find((u) => u.id === id)?.name ?? "Colt",
       resolve: resolveVoice,
     });
     surfaces.add(voice);
@@ -142,6 +146,12 @@ async function main() {
       "SMS/voice disabled — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER and give a user a phone"
     );
   }
+
+  registerBuiltins(registry, {
+    memory,
+    db,
+    placeOutbound: voice ? (input) => voice!.placeOutboundCall(input) : undefined,
+  });
 
   surfaces.add(
     new WebSurface({
@@ -188,6 +198,15 @@ async function main() {
             announcementFor: (token) => voice!.announcementFor(token),
             audioFor: (id) => voice!.audioFor(id),
             activeCalls: () => voice!.activeCalls(),
+            outbound: {
+              incomingUrl: voice.outboundUrls().incoming,
+              turnUrl: voice.outboundUrls().turn,
+              statusUrl: voice.outboundUrls().status,
+              greeting: (id, sid) => voice!.outboundGreeting(id, sid),
+              turn: (id, sid, speech) => voice!.outboundTurn(id, sid, speech),
+              status: (id, s) => voice!.outboundStatus(id, s),
+              history: (ownerId) => voice!.outboundHistory(ownerId),
+            },
           }
         : undefined,
     })

@@ -37,6 +37,25 @@ export type VoiceHook = {
   /** mp3 bytes for a generated ElevenLabs line, or null if unknown/expired. */
   audioFor(id: string): Buffer | null;
   activeCalls(): { userId: string; name: string; sinceMs: number }[];
+  /** Outbound calls (Tier-2 place_call action). */
+  outbound?: {
+    incomingUrl: string;
+    turnUrl: string;
+    statusUrl: string;
+    greeting(id: string, callSid: string): Promise<string>;
+    turn(id: string, callSid: string, speech: string): Promise<string>;
+    status(id: string, status: string): Promise<void>;
+    history(ownerId: string): Promise<
+      {
+        id: string;
+        counterparty: string;
+        purpose: string;
+        status: string;
+        transcript: { speaker: string; text: string }[];
+        createdAt: Date;
+      }[]
+    >;
+  };
 };
 
 type Deps = {
@@ -265,7 +284,8 @@ export function createApp(deps: Deps): Express {
     const calls = (await deps.activity.recent(userId, 60)).filter((a) =>
       ["call_started", "call_ended"].includes(a.kind)
     );
-    res.json({ enabled: Boolean(deps.voice), active, calls });
+    const outbound = (await deps.voice?.outbound?.history(userId)) ?? [];
+    res.json({ enabled: Boolean(deps.voice), active, calls, outbound });
   });
 
   // Twilio inbound SMS webhook (form-encoded, no session).
@@ -360,6 +380,51 @@ export function createApp(deps: Deps): Express {
       }
       xml(res, await voice.announcementFor(token));
     });
+
+    // Outbound calls (Tier-2 place_call). `c` is our voice_calls id.
+    if (voice.outbound) {
+      const ob = voice.outbound;
+      app.post("/twilio/voice/outbound", form, async (req, res) => {
+        const params = (req.body ?? {}) as Record<string, string>;
+        const id = String(req.query.c ?? "");
+        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.incomingUrl}?c=${id}`, params)) {
+          return res.status(403).send("bad signature");
+        }
+        try {
+          xml(res, await ob.greeting(id, String(params.CallSid ?? "")));
+        } catch (err) {
+          logger.error("outbound greeting failed", err);
+          xml(res, '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+        }
+      });
+
+      app.post("/twilio/voice/outbound/turn", form, async (req, res) => {
+        const params = (req.body ?? {}) as Record<string, string>;
+        const id = String(req.query.c ?? "");
+        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.turnUrl}?c=${id}`, params)) {
+          return res.status(403).send("bad signature");
+        }
+        try {
+          xml(
+            res,
+            await ob.turn(id, String(params.CallSid ?? ""), String(params.SpeechResult ?? ""))
+          );
+        } catch (err) {
+          logger.error("outbound turn failed", err);
+          xml(res, '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+        }
+      });
+
+      app.post("/twilio/voice/outbound/status", form, async (req, res) => {
+        const params = (req.body ?? {}) as Record<string, string>;
+        const id = String(req.query.c ?? "");
+        if (!voice.verify(req.header("X-Twilio-Signature"), `${ob.statusUrl}?c=${id}`, params)) {
+          return res.status(403).send("bad signature");
+        }
+        await ob.status(id, String(params.CallStatus ?? ""));
+        res.status(204).end();
+      });
+    }
 
     // Generated ElevenLabs audio, fetched by Twilio's <Play>. Unguessable id,
     // short TTL, no signature (Twilio's media fetcher doesn't sign GETs).

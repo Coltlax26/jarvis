@@ -64,4 +64,48 @@ describe("builtin actions", () => {
     expect(out.kind).toBe("held");
     if (out.kind === "held") expect(out.tier).toBe(2);
   });
+
+  it("place_call is tier 2 and normalises the number on approval", async () => {
+    const calls: { to: string; purpose: string; ownerId: string }[] = [];
+    const reg = new ActionRegistry();
+    registerBuiltins(reg, {
+      memory,
+      db,
+      placeOutbound: async (input) => {
+        calls.push(input);
+        return { id: "call-1" };
+      },
+    });
+    const g = new ActionGate(db, reg);
+    const held = await g.attempt(
+      "place_call",
+      { to: "(610) 555-0000", purpose: "book a table for two at 7" },
+      ctx
+    );
+    expect(held.kind).toBe("held");
+    if (held.kind !== "held") return;
+    expect(held.tier).toBe(2);
+    expect(calls).toHaveLength(0); // not run until approved
+
+    const res = await g.approve(held.pendingId, "colt");
+    expect(res.ok).toBe(true);
+    expect(calls[0]).toEqual({
+      to: "+16105550000",
+      purpose: "book a table for two at 7",
+      ownerId: "colt",
+    });
+  });
+
+  it("place_call reports cleanly when outbound calling is not configured", async () => {
+    const held = await gate.attempt(
+      "place_call",
+      { to: "+16105550000", purpose: "ask about hours" },
+      ctx
+    );
+    expect(held.kind).toBe("held");
+    if (held.kind !== "held") return;
+    const res = await gate.approve(held.pendingId, "colt");
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/not configured/i);
+  });
 });
