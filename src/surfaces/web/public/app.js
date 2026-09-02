@@ -178,6 +178,48 @@ function bubble(text, who) {
   log.scrollTop = log.scrollHeight;
   return el;
 }
+/* live call UI */
+let onCall = false;
+let callTimeout = null;
+function switchToTab(view) {
+  const btn = document.querySelector('.tab[data-view="' + view + '"]');
+  if (btn && !btn.classList.contains("active")) btn.click();
+}
+function showCallBanner(text) {
+  $("call-banner-text").textContent = text;
+  $("call-banner").hidden = false;
+  bumpCallTimeout();
+}
+function hideCallBanner() {
+  $("call-banner").hidden = true;
+  if (callTimeout) { clearTimeout(callTimeout); callTimeout = null; }
+}
+function bumpCallTimeout() {
+  if (callTimeout) clearTimeout(callTimeout);
+  // safety: if we hear nothing for 90s, assume the call dropped
+  callTimeout = setTimeout(() => { onCall = false; hideCallBanner(); }, 90000);
+}
+function addPhoneLine(text, who) {
+  if (who === "jarvis") {
+    const row = document.createElement("div");
+    row.className = "msg-row phone";
+    const av = document.createElement("span");
+    av.className = "javatar";
+    av.innerHTML = JARVIS_MARK;
+    const el = document.createElement("div");
+    el.className = "msg jarvis phone";
+    el.textContent = text;
+    row.append(av, el);
+    log.appendChild(row);
+  } else {
+    const el = document.createElement("div");
+    el.className = "msg me phone";
+    el.textContent = text;
+    log.appendChild(el);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
 function showThinking(label) {
   clearThinking();
   thinkingEl = document.createElement("div");
@@ -240,6 +282,27 @@ function connectStream() {
   es.addEventListener("activity", (ev) => {
     const e = JSON.parse(ev.data);
     pushEvent(e);
+
+    // --- live phone call ---
+    if (e.kind === "call_started") {
+      onCall = true;
+      showCallBanner(e.text || "On a call");
+      bubble("📞 " + (e.text || "Incoming call") + " — Jarvis answered", "system");
+      switchToTab("chat");
+    }
+    if (e.kind === "call_transcript") {
+      const speaker = e.data && e.data.speaker;
+      addPhoneLine(e.text, speaker === "caller" ? "me" : "jarvis");
+      bumpCallTimeout();
+    }
+    if (e.kind === "call_ended") {
+      onCall = false;
+      hideCallBanner();
+      bubble("📞 Call ended. Transcript saved.", "system");
+      refreshOverview();
+    }
+    if (onCall) return; // during a call, the events above drive the UI
+
     if (e.kind === "turn_start" || e.kind === "thinking" || e.kind === "tool_run") setState("working");
     if (e.kind === "thinking") showThinking(e.text);
     if (e.kind === "tool_run") showThinking(e.text + "…");
@@ -259,6 +322,7 @@ const EVT_ICON = {
   turn_start: "◈", thinking: "◇", tool_run: "▸", tool_held: "❚❚", tool_rejected: "✕",
   reply: "✓", turn_end: "✓", error: "!", message_in: "◈", action_run: "▸",
   action_held: "❚❚", action_approved: "✓", action_rejected: "✕", reminder_sent: "◔",
+  call_started: "📞", call_ended: "📴", call_transcript: "🗣",
 };
 function eventRow(e) {
   const row = document.createElement("div");

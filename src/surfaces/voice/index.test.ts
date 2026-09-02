@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { verifyTwilioSignature } from "../twilio/signature.js";
+import { JarvisBus, type JarvisEvent } from "../../core/events.js";
 import { makeTestDb } from "../../../test/helpers/db.js";
 import type { Db } from "../../db/index.js";
 import { MemoryRepo } from "../../memory/repo.js";
@@ -14,9 +15,11 @@ import { VoiceSurface } from "./index.js";
 
 let db: Db;
 let voice: VoiceSurface;
+let events: JarvisEvent[];
 
 beforeEach(async () => {
   db = await makeTestDb();
+  events = [];
   const memory = new MemoryRepo(db);
   await memory.ensureUser("colt", "Colt");
   const registry = new ActionRegistry();
@@ -33,6 +36,8 @@ beforeEach(async () => {
     runner: new FakeRunner([{ say: "The weather is fine." }]),
     config: cfg,
   });
+  const bus = new JarvisBus();
+  bus.subscribe("colt", (e) => events.push(e));
   voice = new VoiceSurface({
     accountSid: "AC1",
     authToken: "tok",
@@ -42,6 +47,7 @@ beforeEach(async () => {
     users: [{ phone: "+15551234567", userId: "colt", name: "Colt" }],
     brain,
     gate,
+    bus,
   });
 });
 afterEach(async () => {
@@ -77,6 +83,20 @@ describe("VoiceSurface", () => {
 
   it("announcement for an unknown token is graceful", () => {
     expect(voice.announcementFor("nope")).toContain("expired");
+  });
+
+  it("streams call events to the bus for the live console", async () => {
+    voice.greeting("+15551234567");
+    await voice.turn("+15551234567", "what's the weather");
+    await voice.turn("+15551234567", "okay goodbye");
+    const kinds = events.map((e) => e.kind);
+    expect(kinds).toContain("call_started");
+    expect(kinds).toContain("call_ended");
+    const transcript = events
+      .filter((e) => e.kind === "call_transcript")
+      .map((e) => `${(e.data as { speaker: string }).speaker}:${e.text}`);
+    expect(transcript).toContain("caller:what's the weather");
+    expect(transcript).toContain("jarvis:The weather is fine.");
   });
 
   it("verifies its own signature scheme", () => {

@@ -5,7 +5,10 @@ export type JarvisEventKind =
   | "tool_held"
   | "tool_rejected"
   | "turn_end"
-  | "error";
+  | "error"
+  | "call_started"
+  | "call_ended"
+  | "call_transcript";
 
 export type JarvisEvent = {
   kind: JarvisEventKind;

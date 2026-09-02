@@ -89,6 +89,7 @@ async function main() {
       users: phoneUsers.map((u) => ({ phone: u.phone!, userId: u.id, name: u.name })),
       brain,
       gate,
+      bus,
     });
     surfaces.add(voice);
   } else {

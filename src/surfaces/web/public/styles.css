@@ -220,6 +220,23 @@ h2:first-child { margin-top: 4px; }
 #today .cell .v.warn { color: var(--warn); }
 #today .brief { flex-basis: 100%; color: var(--ink-dim); font-size: 13px; padding: 2px 2px 0; }
 
+/* ---------------- call banner ---------------- */
+#call-banner {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 12px;
+  padding: 10px 14px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  font: 600 12px var(--hud); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+#call-banner[hidden] { display: none; }
+#call-banner .ph { font-size: 15px; }
+#call-banner .live-dot {
+  margin-left: auto; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 8px var(--ok);
+}
+.msg.phone { font-family: var(--sans); }
+.msg-row.phone .javatar { animation: pulse 1.6s ease-in-out infinite; }
+
 /* ---------------- chat ---------------- */
 #view-chat { display: flex; flex-direction: column; height: calc(100vh - 58px - 40px); }
 #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; padding: 4px 2px 16px; }

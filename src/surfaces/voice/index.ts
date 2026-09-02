@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../../logger.js";
 import type { Brain } from "../../core/brain.js";
 import type { ActionGate } from "../../actions/gate.js";
+import type { JarvisBus, JarvisEventKind } from "../../core/events.js";
 import type { Surface } from "../types.js";
 import { parseCommand } from "../telegram/parse.js";
 import {
@@ -36,6 +37,7 @@ export class VoiceSurface implements Surface {
       users: VoiceUser[];
       brain: Brain;
       gate: ActionGate;
+      bus?: JarvisBus;
     }
   ) {
     this.client = new TwilioVoiceClient({
@@ -56,6 +58,16 @@ export class VoiceSurface implements Surface {
     return this.client.verify(sig, url, params);
   }
 
+  private emit(userId: string, kind: JarvisEventKind, text: string, data?: unknown): void {
+    this.deps.bus?.publish(userId, {
+      kind,
+      text,
+      at: new Date().toISOString(),
+      surface: "voice",
+      data,
+    });
+  }
+
   urls(): { incoming: string; turn: string; announce: string } {
     return { incoming: this.incomingUrl, turn: this.turnUrl, announce: this.announceBase };
   }
@@ -70,6 +82,10 @@ export class VoiceSurface implements Surface {
     const hello = user
       ? `Good day, ${user.name}. Jarvis here. How can I help?`
       : "Jarvis here. I'm afraid I don't recognise this number, but go ahead.";
+    if (user) {
+      this.emit(user.userId, "call_started", `Incoming call from ${user.name}`);
+      this.emit(user.userId, "call_transcript", hello, { speaker: "jarvis" });
+    }
     return conversationTwiML(hello, { voice: this.voice, actionUrl: this.turnUrl });
   }
 
@@ -88,7 +104,10 @@ export class VoiceSurface implements Surface {
         actionUrl: this.turnUrl,
       });
     }
+    this.emit(user.userId, "call_transcript", text, { speaker: "caller" });
     if (isGoodbye(text)) {
+      this.emit(user.userId, "call_transcript", "Very good. Goodbye.", { speaker: "jarvis" });
+      this.emit(user.userId, "call_ended", "Call ended");
       return conversationTwiML("Very good. Goodbye.", { voice: this.voice });
     }
     try {
@@ -113,6 +132,7 @@ export class VoiceSurface implements Surface {
         });
         reply = out.text;
       }
+      this.emit(user.userId, "call_transcript", reply, { speaker: "jarvis" });
       return conversationTwiML(reply, { voice: this.voice, actionUrl: this.turnUrl });
     } catch (err) {
       logger.error("voice turn failed", err);
