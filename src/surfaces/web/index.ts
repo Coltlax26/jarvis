@@ -12,6 +12,7 @@ import type { ActionGate } from "../../actions/gate.js";
 import type { MemoryRepo } from "../../memory/repo.js";
 import type { ActivityRepo } from "../../activity/repo.js";
 import { SETTING_KEYS, type SettingsRepo } from "../../settings/repo.js";
+import { PROSPECT_STATUSES, type ProspectRepo, type ProspectStatus } from "../../prospects/repo.js";
 import type { JarvisBus } from "../../core/events.js";
 import type { Db } from "../../db/index.js";
 import type { Surface } from "../types.js";
@@ -31,6 +32,7 @@ type Deps = {
   memory: MemoryRepo;
   activity: ActivityRepo;
   settings: SettingsRepo;
+  prospects: ProspectRepo;
   bus: JarvisBus;
   db: Db;
   /** Env-var defaults, shown in the Settings tab when nothing is overridden. */
@@ -87,6 +89,10 @@ export function createApp(deps: Deps): Express {
 
   const byId = new Map(deps.users.map((u) => [u.id, u]));
   const uid = (req: Request): string => (req.session as SessionShape).userId ?? "";
+  const str = (v: unknown): string | undefined => {
+    const s = typeof v === "string" ? v.trim() : "";
+    return s ? s.slice(0, 500) : undefined;
+  };
 
   const requireAuth = (req: Request, res: Response, next: NextFunction) => {
     const id = uid(req);
@@ -279,6 +285,49 @@ export function createApp(deps: Deps): Express {
     const text = String((req.body as { text?: unknown })?.text ?? "").slice(0, 4000);
     await deps.settings.set(uid(req), "instructions", text);
     res.json({ ok: true });
+  });
+
+  // Prospects: Colt's sales pipeline.
+  app.get("/api/prospects", requireAuth, async (req, res) => {
+    const userId = uid(req);
+    const [list, counts] = await Promise.all([
+      deps.prospects.list(userId),
+      deps.prospects.counts(userId),
+    ]);
+    res.json({ prospects: list, counts, statuses: PROSPECT_STATUSES });
+  });
+
+  app.post("/api/prospects", requireAuth, async (req, res) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const name = String(b.name ?? "").trim();
+    if (!name) return res.status(400).json({ error: "name required" });
+    const p = await deps.prospects.add(uid(req), {
+      name,
+      businessType: str(b.businessType),
+      town: str(b.town),
+      phone: str(b.phone),
+      website: str(b.website),
+      notes: str(b.notes),
+    });
+    res.json({ ok: true, prospect: p });
+  });
+
+  app.put("/api/prospects/:id", requireAuth, async (req, res) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Record<string, string | null> = {};
+    for (const k of ["name", "businessType", "town", "phone", "website", "notes"]) {
+      if (k in b) patch[k] = str(b[k]) ?? null;
+    }
+    if (typeof b.status === "string" && (PROSPECT_STATUSES as readonly string[]).includes(b.status)) {
+      patch.status = b.status;
+    }
+    const p = await deps.prospects.update(uid(req), String(req.params.id), patch as never);
+    res.status(p ? 200 : 404).json({ ok: Boolean(p), prospect: p });
+  });
+
+  app.delete("/api/prospects/:id", requireAuth, async (req, res) => {
+    const ok = await deps.prospects.remove(uid(req), String(req.params.id));
+    res.status(ok ? 200 : 404).json({ ok });
   });
 
   // Google (Gmail + Calendar) connect flow.

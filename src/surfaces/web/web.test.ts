@@ -28,6 +28,8 @@ beforeEach(async () => {
   const activity = new ActivityRepo(db);
   const { SettingsRepo } = await import("../../settings/repo.js");
   const settings = new SettingsRepo(db);
+  const { ProspectRepo } = await import("../../prospects/repo.js");
+  const prospects = new ProspectRepo(db);
   const bus = new JarvisBus();
   const cfg: Pick<Config, "tz" | "workspaceDir"> = {
     tz: "America/Denver",
@@ -62,6 +64,7 @@ beforeEach(async () => {
     memory,
     activity,
     settings,
+    prospects,
     settingDefaults: {},
     bus,
     db,

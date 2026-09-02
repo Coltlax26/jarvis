@@ -98,4 +98,32 @@ describe("builtin actions", () => {
     expect(reg.get("open_url")).toBeUndefined();
     expect(reg.get("open_app")).toBeUndefined();
   });
+
+  it("prospect actions: save (tier 0), list, and move status", async () => {
+    const { ProspectRepo } = await import("../../prospects/repo.js");
+    const reg = new ActionRegistry();
+    registerBuiltins(reg, { memory, db, prospects: new ProspectRepo(db) });
+    const g = new ActionGate(db, reg);
+
+    const saved = await g.attempt(
+      "save_prospect",
+      { name: "Bob's Barbershop", businessType: "salon", town: "Emmaus" },
+      ctx
+    );
+    expect(saved.kind).toBe("executed");
+
+    const listed = await g.attempt("list_prospects", {}, ctx);
+    expect(listed.kind).toBe("executed");
+    if (listed.kind !== "executed") return;
+    expect(listed.result.message).toMatch(/Bob's Barbershop.*no website/);
+
+    const rows = listed.result.data as { id: string }[];
+    const moved = await g.attempt(
+      "set_prospect_status",
+      { id: rows[0]!.id.slice(0, 8), status: "contacted" },
+      ctx
+    );
+    expect(moved.kind).toBe("executed");
+    if (moved.kind === "executed") expect(moved.result.message).toMatch(/contacted/);
+  });
 });

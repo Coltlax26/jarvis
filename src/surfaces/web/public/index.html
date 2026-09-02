@@ -43,6 +43,7 @@
       <nav class="tabs" id="tabs">
         <button class="tab active" data-view="chat">Chat</button>
         <button class="tab" data-view="tasks">Tasks <span class="badge" id="badge-tasks"></span></button>
+        <button class="tab" data-view="prospects">Prospects <span class="badge" id="badge-prospects"></span></button>
         <button class="tab" data-view="brain">Brain</button>
         <button class="tab" data-view="activity">Activity</button>
         <button class="tab" data-view="settings">Settings</button>
@@ -91,6 +92,18 @@
         <div id="reminder-list"></div>
         <h2>Recently done</h2>
         <div id="done-list"></div>
+      </section>
+
+      <section class="view" id="view-prospects" hidden>
+        <h2>Sales pipeline <span class="count" id="prospect-count">0</span></h2>
+        <p class="settings-note">Businesses to pitch a website to. Ask Jarvis to "find leads" and it fills this in. Click a status to move a prospect along.</p>
+        <form id="prospect-add" class="brain-add">
+          <input type="text" id="pr-name" placeholder="Business name" />
+          <input type="text" id="pr-type" placeholder="Type" style="max-width:120px" />
+          <input type="text" id="pr-town" placeholder="Town" style="max-width:120px" />
+          <button type="submit">Add</button>
+        </form>
+        <div id="prospect-board"></div>
       </section>
 
       <section class="view" id="view-brain" hidden>

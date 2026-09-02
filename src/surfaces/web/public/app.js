@@ -136,6 +136,7 @@ $("tabs").addEventListener("click", (e) => {
   const view = btn.dataset.view;
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
   if (view === "brain") loadBrain();
+  if (view === "prospects") loadProspects();
 });
 
 /* ---------------- clock ---------------- */
@@ -339,6 +340,68 @@ function buildBrief(t) {
   if (t.pendingCount) parts.push(`${t.pendingCount} thing${t.pendingCount > 1 ? "s" : ""} need${t.pendingCount > 1 ? "" : "s"} your approval`);
   if (!parts.length) return "Nothing scheduled today. Ask me anything.";
   return "Today: " + parts.join(" · ") + ".";
+}
+
+/* ---------------- prospects tab ---------------- */
+const PR_STATUSES = ["new", "contacted", "interested", "quoted", "won", "lost"];
+async function loadProspects() {
+  const { ok, data } = await api("/api/prospects");
+  if (!ok) return;
+  $("prospect-count").textContent = data.prospects.length;
+  const open = data.prospects.filter((p) => p.status !== "won" && p.status !== "lost").length;
+  $("badge-prospects").textContent = open || "";
+  const board = $("prospect-board");
+  board.innerHTML = "";
+  if (!data.prospects.length) {
+    board.innerHTML = '<div class="empty">No prospects yet. Ask Jarvis: "find me 10 businesses in my area without a website".</div>';
+    return;
+  }
+  for (const p of data.prospects) {
+    const row = document.createElement("div");
+    row.className = "pr-row s-" + p.status;
+    const meta = [p.businessType, p.town, p.phone].filter(Boolean).join(" · ");
+    const site = p.website
+      ? '<a href="' + p.website + '" target="_blank" rel="noopener">has site</a>'
+      : '<span class="no-site">no website</span>';
+    row.innerHTML =
+      '<div class="pr-main"><div class="pr-name"></div><div class="pr-meta"></div></div>' +
+      '<div class="pr-site">' + site + '</div>' +
+      '<div class="pr-status"></div>' +
+      '<button class="mem-del" title="Remove">×</button>';
+    row.querySelector(".pr-name").textContent = p.name;
+    row.querySelector(".pr-meta").textContent = meta || "—";
+    const sd = row.querySelector(".pr-status");
+    for (const s of PR_STATUSES) {
+      const b = document.createElement("button");
+      b.className = "chip" + (s === p.status ? " on" : "");
+      b.textContent = s;
+      b.addEventListener("click", async () => {
+        await api("/api/prospects/" + p.id, { method: "PUT", body: { status: s } });
+        loadProspects();
+      });
+      sd.appendChild(b);
+    }
+    row.querySelector(".mem-del").addEventListener("click", async () => {
+      row.style.opacity = "0.4";
+      await api("/api/prospects/" + p.id, { method: "DELETE" });
+      loadProspects();
+    });
+    board.appendChild(row);
+  }
+}
+const prospectAdd = $("prospect-add");
+if (prospectAdd) {
+  prospectAdd.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("pr-name").value.trim();
+    if (!name) return;
+    await api("/api/prospects", {
+      method: "POST",
+      body: { name, businessType: $("pr-type").value.trim(), town: $("pr-town").value.trim() },
+    });
+    $("pr-name").value = $("pr-type").value = $("pr-town").value = "";
+    loadProspects();
+  });
 }
 
 /* ---------------- brain tab ---------------- */

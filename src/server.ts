@@ -20,6 +20,7 @@ import { GoogleClient } from "./surfaces/google/client.js";
 import { BrowserRunner } from "./surfaces/browser/runner.js";
 import { BrowseService } from "./surfaces/browser/service.js";
 import { MacControl } from "./surfaces/mac/control.js";
+import { ProspectRepo } from "./prospects/repo.js";
 import { Scheduler } from "./scheduler/index.js";
 import { CalendarReminderJob } from "./scheduler/calendarReminders.js";
 
@@ -52,6 +53,7 @@ async function main() {
 
   const registry = new ActionRegistry();
   const gate = new ActionGate(db, registry);
+  const prospects = new ProspectRepo(db);
 
   const browse = new BrowseService({
     runner: new BrowserRunner(),
@@ -103,6 +105,7 @@ async function main() {
     google,
     browse: { run: (userId, input) => browse.run(userId, input) },
     mac: mac ?? undefined,
+    prospects,
   });
   if (!google) {
     logger.warn(
@@ -124,6 +127,7 @@ async function main() {
       memory,
       activity,
       settings,
+      prospects,
       settingDefaults: {},
       bus,
       db,

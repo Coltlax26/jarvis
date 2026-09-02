@@ -8,6 +8,8 @@ import { spendTestAction } from "./spendTest.js";
 import { registerGoogleActions, type GoogleActionsApi } from "./google.js";
 import { browseAction, type BrowseApi } from "./browse.js";
 import { registerMacActions, type MacApi } from "./mac.js";
+import { registerProspectActions } from "./prospects.js";
+import type { ProspectRepo } from "../../prospects/repo.js";
 
 export function registerBuiltins(
   reg: ActionRegistry,
@@ -17,6 +19,7 @@ export function registerBuiltins(
     google?: GoogleActionsApi;
     browse?: BrowseApi;
     mac?: MacApi;
+    prospects?: ProspectRepo;
   }
 ): void {
   reg.register(rememberAction(deps.memory));
@@ -26,4 +29,5 @@ export function registerBuiltins(
   if (deps.google) registerGoogleActions(reg, deps.google);
   if (deps.browse) reg.register(browseAction(deps.browse));
   if (deps.mac) registerMacActions(reg, deps.mac);
+  if (deps.prospects) registerProspectActions(reg, deps.prospects);
 }
