@@ -1,25 +1,25 @@
 # Jarvis
 
-Jarvis is Colt's personal AI assistant. One always-on process, one shared
-memory, several ways in. Full design: `docs/superpowers/specs/2026-09-01-jarvis-design.md`.
-Phase 1 build plan: `docs/superpowers/plans/2026-09-01-jarvis-phase-1.md`.
+Jarvis is Colt's personal AI assistant. It **runs on Colt's Mac** (see
+`docs/RUNNING-LOCALLY.md`), reachable via the web console and Telegram, with
+one shared memory. Full design: `docs/superpowers/specs/2026-09-01-jarvis-design.md`.
 
 This project is standalone. It has no connection to `~/agent-ops`.
 
 ## Stack
 
 - TypeScript on Node 24, ES modules (`"type": "module"`).
-- `@anthropic-ai/claude-agent-sdk` (installed version: see `package.json` —
-  pinned at `^0.3.252` as of Phase 1) drives the model. Main model
-  `claude-opus-5`, background/cheap jobs use `claude-haiku-4-5` (not wired to
-  anything yet in Phase 1).
-- Postgres for all state. Locally and in tests this runs as
-  `@electric-sql/pglite` (real Postgres compiled to WASM, in-process, no
-  install needed). In production, `DATABASE_URL` (set by Railway) switches
-  to real Postgres over `pg`. Same SQL, same schema, both paths.
-- `vitest` for tests, `tsx` for local dev, plain `tsc` for the production
-  build.
-- `grammy` for Telegram, `express` + `express-session` for the web chat page.
+- `@anthropic-ai/claude-agent-sdk` (`^0.3.252`) drives the model. It spawns the
+  `claude` CLI, which authenticates with Colt's **claude.ai subscription** when
+  no `ANTHROPIC_API_KEY` is set — so there's no per-message API cost. Model is
+  `JARVIS_MODEL` (default `claude-sonnet-5`).
+- Postgres for all state. Locally (the normal case) this is
+  `@electric-sql/pglite` — real Postgres compiled to WASM, in-process, at
+  `workspace/dev.pglite`. If `DATABASE_URL` is set it uses real Postgres over
+  `pg` instead. Same SQL, same schema.
+- `vitest` for tests, `tsx` for local dev, plain `tsc` for the build.
+- `grammy` for Telegram (long-polling — no public URL needed), `express` +
+  `express-session` for the web console.
 
 ## Module map
 
@@ -32,20 +32,17 @@ src/
     builtin/                   remember, set_reminder, and two Phase-1 demo actions
   activity/                    ActivityRepo — a running log of what Jarvis does
   core/                        the brain: prompt building + turn orchestration
-    sdkRunner.ts                real model calls via the Agent SDK
-    fakeRunner.ts               scripted model for tests — no network, no API key
+    sdkRunner.ts                model calls via the Agent SDK (subscription auth)
+    fakeRunner.ts               scripted model for tests — no network
     events.ts                   JarvisBus — in-process pub/sub of turn progress
+  settings/                    SettingsRepo — per-user key/value (mechanism kept, no keys yet)
   surfaces/                    Surface interface + registry (route replies by channel)
-    telegram/                   Telegram surface
-    twilio/                     Twilio clients: TwilioClient (SMS), TwilioVoiceClient
-                                (calls + TwiML), shared signature.ts
-    voice/                      VoiceSurface — inbound calls (greeting + Gather turn
-                                loop, POST /twilio/voice[/turn]), outbound announce
-                                calls (send()), TTS voice Polly.Brian-Neural
-    web/                        the web console + all Twilio webhooks (form-encoded,
-                                signature-verified): /twilio/sms, /twilio/voice[/turn],
-                                /twilio/voice/announce
-  scheduler/                    60s loop that delivers due reminders
+    telegram/                   Telegram surface (grammy long-polling)
+    google/                     Gmail + Calendar (OAuth, GoogleClient, token repo)
+    browser/                    Playwright headless browser (browse action) — inert without Chromium
+    mac/                        MacControl — open_url / open_app via `open` (darwin only)
+    web/                        the web console: /api/*, /auth/google*, /browse/shot/:id
+  scheduler/                    reminder delivery loop + calendar-reminder job
   server.ts                    wires everything and boots
 migrations/                    numbered .sql files, applied in order at boot
 ```
@@ -57,13 +54,13 @@ the *only* permission system — never add a one-off permission check
 somewhere else.
 
 - **Tier 0 — automatic.** Answering, research, drafting text, reading and
-  editing files in `workspace/`, proactive notifications to Colt.
+  editing files in `workspace/`, reading Gmail/Calendar, opening a URL or app
+  on Colt's Mac, proactive notifications to Colt.
 - **Tier 1 — draft, needs approval to send.** Anything that messages another
-  person. Held as a `draft` row until Colt approves.
+  person, or writes to Gmail/Calendar. Held as a `draft` row until Colt approves.
 - **Tier 2 — explicit approval every time, no exceptions.** Spending money,
-  reservations, calling or texting anyone other than Colt, deleting or
-  overwriting important files, anything irreversible. Never batchable, never
-  pre-approvable.
+  reservations, texting anyone other than Colt, deleting or overwriting
+  important files, anything irreversible. Never batchable, never pre-approvable.
 
 Colt approves or rejects from any surface: `approve <id>` / `reject <id>` /
 `list pending` on Telegram, or the pending-approvals API on the web surface.
@@ -85,15 +82,17 @@ Colt approves or rejects from any surface: `approve <id>` / `reject <id>` /
 2. Route incoming text to `brain.handle({ userId, surface, text })`.
 3. Add it in `server.ts` via `surfaces.add(...)`.
 
-## Running locally
+## Running
 
 ```bash
-cp .env.example .env   # fill in ANTHROPIC_API_KEY, WEB_PASSWORD, SESSION_SECRET
+cp .env.example .env   # fill in SESSION_SECRET, jarvis-users.json, GOOGLE_*, TELEGRAM_*
 npm install
-npm run dev
+./start.sh             # = caffeinate -s npm run dev ; web console at :3000
 ```
 
-No `DATABASE_URL` needed locally — PGlite persists to `workspace/dev.pglite`.
+`npm run dev` / `npm start` load `.env` via `node --env-file-if-exists`. No
+`ANTHROPIC_API_KEY` — the `claude` login is the auth. No `DATABASE_URL` — PGlite
+persists to `workspace/dev.pglite`. Full guide: `docs/RUNNING-LOCALLY.md`.
 
 ## Testing
 
@@ -108,11 +107,12 @@ scripted `ModelRunner` that never touches the network. There is no
 integration test that calls the real Anthropic API — that is exercised by
 hand (`npm run dev`, then talk to it).
 
-## Deploying
+## Hosting
 
-Railway, via `railway.json` (Nixpacks build, `npm start`). Add a Postgres
-database in the same Railway project — `DATABASE_URL` is then set
-automatically. See `docs/SETUP.md` for the full one-step-at-a-time checklist.
+Runs on Colt's Mac. It was on Railway (2026-09) but that needed a paid API key
+and cost too much — moved local to use the Claude subscription. Telephony
+(Twilio voice + SMS) was removed at the same time because it needs public
+webhooks a laptop can't serve.
 
 ## Users
 
@@ -121,8 +121,8 @@ Multi-user. Each person has their own password, name, optional `persona`
 memory, conversations, reminders, pending actions, activity — is keyed by
 `user_id`, so users are fully separate.
 
-- Config: `JARVIS_USERS` (JSON array) for multiple people, or `WEB_PASSWORD`
-  (+ `WEB_USER_NAME` / `WEB_USER_PERSONA`) for a single user. See `.env.example`.
+- Config: `JARVIS_USERS_FILE` (path to a JSON array — recommended),
+  `JARVIS_USERS` (inline JSON), or `WEB_PASSWORD` for a single user.
 - Web login matches the password to a user and stores `userId` in the session;
   every route resolves the caller from `req.session.userId`.
 - Telegram maps each `telegramId` to its user.
@@ -142,5 +142,8 @@ Each user has a `theme` in `JARVIS_USERS`: `mode` (`hud` dark cyan default, or
   surface requires a matching password and uses a signed session cookie.
 - The Agent SDK's file/shell tools are scoped to `WORKSPACE_DIR`
   (`./workspace` by default), never the repo root.
-- All secrets come from environment variables. `.env` is gitignored —
-  never commit a real key.
+- **Mac control** (`src/surfaces/mac/`) is the one thing that runs outside that
+  sandbox: `open_url` (https only) and `open_app` (name regex), both via
+  `execFile("open", …)` — argv array, no shell. Tier 0. Add nothing here that
+  runs arbitrary commands or opens arbitrary paths.
+- All secrets come from `.env` / `jarvis-users.json`, both gitignored.

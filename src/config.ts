@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 export class ConfigError extends Error {}
 
 export type UserTheme = {
@@ -61,8 +63,18 @@ const idFromName = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "user";
 
 function parseUsers(env: NodeJS.ProcessEnv): JarvisUser[] {
-  // Preferred: JARVIS_USERS as a JSON array of { name, password, id?, telegramId? }.
-  const raw = env.JARVIS_USERS?.trim();
+  // Users as a JSON array of { name, password, id?, telegramId?, persona?, theme? }.
+  // From JARVIS_USERS (env), or the file named by JARVIS_USERS_FILE (better for
+  // personas with quotes/# that a single .env line would mangle).
+  let raw = env.JARVIS_USERS?.trim();
+  const file = env.JARVIS_USERS_FILE?.trim();
+  if (!raw && file) {
+    try {
+      raw = readFileSync(file, "utf8").trim();
+    } catch {
+      throw new ConfigError(`JARVIS_USERS_FILE (${file}) could not be read`);
+    }
+  }
   if (raw) {
     let parsed: unknown;
     try {
