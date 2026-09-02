@@ -65,6 +65,8 @@ export type Config = {
   } | null;
   /** Twilio TTS voice for phone calls. */
   voiceTts: string;
+  /** Main model for chat/text turns. Cheaper models cut cost sharply. */
+  model: string;
   /** Model used for phone calls (fast; latency matters more than depth). */
   voiceModel: string;
   /** <Gather speechTimeout>: "auto" (Twilio decides) or seconds of silence. */
@@ -225,6 +227,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     telegramBotToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
     twilio,
     voiceTts: env.VOICE_TTS?.trim() || "Google.en-GB-Chirp3-HD-Charon",
+    model: env.JARVIS_MODEL?.trim() || "claude-haiku-4-5",
     voiceModel: env.VOICE_MODEL?.trim() || "claude-haiku-4-5",
     voiceSpeechTimeout: env.VOICE_SPEECH_TIMEOUT?.trim() || "auto",
     elevenLabs: env.ELEVENLABS_API_KEY?.trim()

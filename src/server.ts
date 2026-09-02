@@ -106,11 +106,12 @@ async function main() {
     : undefined;
 
   const runner = new SdkRunner({
-    model: "claude-opus-5",
+    model: config.model,
     apiKey: config.anthropicApiKey,
     workspaceDir: config.workspaceDir,
     anthropicWorkspaceId: config.anthropicWorkspaceId,
   });
+  logger.info("models", { main: config.model, voice: config.voiceModel });
   // Voice turns use a direct Messages API call (no agent subprocess) so replies
   // come back in ~1-3s instead of ~5-8s.
   const voiceRunner = new DirectRunner({
@@ -196,6 +197,7 @@ async function main() {
       publicUrl: config.publicUrl,
       databaseUrl: config.databaseUrl,
       tz: config.tz,
+      model: config.model,
       brain,
       gate,
       memory,

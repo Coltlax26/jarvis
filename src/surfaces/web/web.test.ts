@@ -171,7 +171,7 @@ describe("WebSurface", () => {
     await call("POST", "/api/message", { cookie: login.cookie, body: { text: "hello" } });
     const res = await call("GET", "/api/overview", { cookie: login.cookie });
     expect(res.status).toBe(200);
-    expect(res.body.model).toBe("claude-opus-5");
+    expect(res.body.model).toBe("claude-haiku-4-5");
     expect(Array.isArray(res.body.pending)).toBe(true);
     expect(Array.isArray(res.body.memories)).toBe(true);
     expect(Array.isArray(res.body.activity)).toBe(true);

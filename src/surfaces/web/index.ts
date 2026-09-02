@@ -65,6 +65,8 @@ type Deps = {
   publicUrl: string;
   databaseUrl: string | null;
   tz: string;
+  /** Main model name, surfaced in the console overview. */
+  model?: string;
   brain: Brain;
   gate: ActionGate;
   memory: MemoryRepo;
@@ -190,7 +192,7 @@ export function createApp(deps: Deps): Express {
         memories,
         activity,
         messages,
-        model: "claude-opus-5",
+        model: deps.model ?? "claude-haiku-4-5",
         now: now.toISOString(),
         tz: deps.tz,
         today: {
