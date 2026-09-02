@@ -96,7 +96,9 @@ export class DirectRunner implements ModelRunner {
         results.push({
           type: "tool_result",
           tool_use_id: tu.id,
-          content: decision.allow ? `ok: ${tu.name} accepted` : decision.message,
+          content: decision.allow
+            ? (decision.result ?? `ok: ${tu.name} accepted`)
+            : decision.message,
           ...(decision.allow ? {} : { is_error: true }),
         });
       }

@@ -52,7 +52,12 @@ export class SdkRunner implements ModelRunner {
             };
           }
           return {
-            content: [{ type: "text" as const, text: `ok: ${action.name} accepted` }],
+            content: [
+              {
+                type: "text" as const,
+                text: decision.result ?? `ok: ${action.name} accepted`,
+              },
+            ],
           };
         }
       );

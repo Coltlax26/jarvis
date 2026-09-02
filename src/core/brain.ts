@@ -117,7 +117,9 @@ export class Brain {
                 summary: `Ran ${name}`,
                 detail: { name, input },
               });
-              return { allow: true };
+              // Hand the action's own output back to the model — for read
+              // actions (inbox, calendar) this text *is* the answer.
+              return { allow: true, result: outcome.result.message };
             }
             this.emit(msg.userId, msg.surface, "error", `${name} failed`, { name });
             return { allow: false, message: `Action failed: ${outcome.result.message}` };

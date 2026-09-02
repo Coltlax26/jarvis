@@ -70,6 +70,15 @@ describe("Brain", () => {
     expect(hits.some((m) => m.content.includes("Milo"))).toBe(true);
   });
 
+  it("feeds a tier 0 action's output back to the model", async () => {
+    const runner = new FakeRunner([
+      { callTool: { name: "set_reminder", input: { deliverAt: new Date(Date.now() + 3.6e6).toISOString(), body: "call mom" } }, say: "Done." },
+    ]);
+    const brain = new Brain({ memory, gate, registry, runner, config: cfg });
+    await brain.handle({ userId: "colt", surface: "web", text: "remind me to call mom in an hour" });
+    expect(runner.toolResults[0]).toMatch(/Reminder set/i);
+  });
+
   it("denies a tier 2 tool call and tells the model it is pending", async () => {
     const seen: string[] = [];
     const runner = new FakeRunner([

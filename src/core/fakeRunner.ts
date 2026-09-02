@@ -6,6 +6,8 @@ export class FakeRunner implements ModelRunner {
   lastUserPrompt = "";
   lastSystemPrompt = "";
   onDeny?: (message: string) => void;
+  /** Tool results fed back by the gate, in call order (for assertions). */
+  toolResults: string[] = [];
 
   constructor(private steps: FakeStep[]) {}
 
@@ -16,7 +18,8 @@ export class FakeRunner implements ModelRunner {
     for (const step of this.steps) {
       if (step.callTool) {
         const decision = await req.onToolAttempt(step.callTool.name, step.callTool.input);
-        if (!decision.allow) this.onDeny?.(decision.message);
+        if (decision.allow) this.toolResults.push(decision.result ?? "");
+        else this.onDeny?.(decision.message);
       }
       if (step.say) parts.push(step.say);
     }

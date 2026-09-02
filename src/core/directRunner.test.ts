@@ -78,18 +78,19 @@ describe("DirectRunner", () => {
         toolActions: [noteAction as Action],
         onToolAttempt: async (name, input) => {
           seen.push(`${name}:${JSON.stringify(input)}`);
-          return { allow: true };
+          return { allow: true, result: "• Bob — Lunch?: wanna grab lunch" };
         },
       })
     );
     expect(seen).toEqual(['note:{"text":"buy milk"}']);
     expect(out.text).toBe("Noted.");
     expect(createMock).toHaveBeenCalledTimes(2);
-    // second call must include the tool_result
+    // second call must feed the action's own output back as the tool_result
     const secondCallMessages = createMock.mock.calls[1]![0].messages;
     const lastMsg = secondCallMessages[secondCallMessages.length - 1];
     expect(lastMsg.content[0].type).toBe("tool_result");
     expect(lastMsg.content[0].tool_use_id).toBe("tu_1");
+    expect(lastMsg.content[0].content).toBe("• Bob — Lunch?: wanna grab lunch");
   });
 
   it("passes a denied tool's message back to the model as an error", async () => {
