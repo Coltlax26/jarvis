@@ -1,8 +1,0 @@
-# Install Chromium so the Tier-2 `browse` action has a headless browser.
-# `aptPkgs` is additive — it installs on top of the Nixpacks Node base image,
-# it does not replace the auto-detected Node toolchain.
-[phases.setup]
-aptPkgs = ["chromium", "fonts-liberation", "libnss3", "libatk-bridge2.0-0", "libcups2", "libxkbcommon0", "libxdamage1", "libgbm1", "libpango-1.0-0", "libasound2"]
-
-[variables]
-PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "/usr/bin/chromium"
